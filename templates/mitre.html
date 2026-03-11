@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MITRE ATT&CK - Threat Intelligence Platform</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <svg class="logo-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+                <span class="brand-text">ThreatIntel Platform</span>
+            </div>
+            <div class="nav-links">
+                <a href="/" class="nav-link">Dashboard</a>
+                <a href="/threats" class="nav-link">Threats</a>
+                <a href="/logs" class="nav-link">Log Correlations</a>
+                <a href="/mitre" class="nav-link active">MITRE ATT&CK</a>
+                <a href="/reports" class="nav-link">Reports</a>
+                <a href="/add-indicator" class="nav-link">Add Indicator</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <header class="page-header">
+            <h1>MITRE ATT&CK Framework</h1>
+            <button id="refreshBtn" class="btn btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Refresh Data
+            </button>
+        </header>
+
+        <div class="content-grid">
+            <div class="chart-card">
+                <h2 class="card-title">Top Techniques Detected</h2>
+                <canvas id="techniquesChart"></canvas>
+            </div>
+
+            <div class="chart-card">
+                <h2 class="card-title">Tactics Distribution</h2>
+                <canvas id="tacticsChart"></canvas>
+            </div>
+        </div>
+
+        <div class="table-card">
+            <div class="card-header">
+                <h2 class="card-title">MITRE ATT&CK Techniques</h2>
+                <div class="search-box">
+                    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    <input type="text" id="searchInput" placeholder="Search techniques...">
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="mitreTable">
+                    <thead>
+                        <tr>
+                            <th>Technique</th>
+                            <th>Tactic</th>
+                            <th>Count</th>
+                            <th>Risk Distribution</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mitreBody">
+                        <tr>
+                            <td colspan="4" class="loading">Loading data...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            loadMitre();
+        });
+    </script>
+</body>
+</html>

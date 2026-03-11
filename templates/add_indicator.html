@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Threat Indicator - Threat Intelligence Platform</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <svg class="logo-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+                <span class="brand-text">ThreatIntel Platform</span>
+            </div>
+            <div class="nav-links">
+                <a href="/" class="nav-link">Dashboard</a>
+                <a href="/threats" class="nav-link">Threats</a>
+                <a href="/logs" class="nav-link">Log Correlations</a>
+                <a href="/mitre" class="nav-link">MITRE ATT&CK</a>
+                <a href="/reports" class="nav-link">Reports</a>
+                <a href="/add-indicator" class="nav-link active">Add Indicator</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <header class="page-header">
+            <h1>Add Threat Indicators</h1>
+            <button onclick="window.location.href='/threats'" class="btn btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                </svg>
+                View All Indicators
+            </button>
+        </header>
+
+        <div id="alertContainer"></div>
+
+        <div class="content-grid">
+            <div class="form-card">
+                <h2 class="card-title">Add IP Addresses</h2>
+                <form id="ipForm" class="form-grid">
+                    <div class="form-group">
+                        <label for="ipAddresses">IP Addresses (one per line or comma-separated)</label>
+                        <textarea id="ipAddresses" placeholder="Enter IP addresses, e.g.&#10;192.168.1.1&#10;10.0.0.5&#10;203.0.113.45" required></textarea>
+                        <small style="color: var(--gray-600);">Add multiple IP addresses, one per line or separated by commas</small>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-success">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                            Add IP Addresses
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="form-card">
+                <h2 class="card-title">Add Domains</h2>
+                <form id="domainForm" class="form-grid">
+                    <div class="form-group">
+                        <label for="domains">Domain Names (one per line or comma-separated)</label>
+                        <textarea id="domains" placeholder="Enter domain names, e.g.&#10;malicious-site.com&#10;phishing-domain.net&#10;evil-server.org" required></textarea>
+                        <small style="color: var(--gray-600);">Add multiple domains, one per line or separated by commas</small>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-success">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                            Add Domains
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="form-card" style="margin-top: 2rem;">
+            <h2 class="card-title">Quick Add Single Indicator</h2>
+            <form id="singleForm" class="form-grid">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="indicatorType">Indicator Type</label>
+                        <select id="indicatorType" required>
+                            <option value="">Select Type</option>
+                            <option value="ip">IP Address</option>
+                            <option value="domain">Domain</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="singleIndicator">Indicator Value</label>
+                        <input type="text" id="singleIndicator" placeholder="e.g., 192.168.1.1 or example.com" required>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-success">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                        </svg>
+                        Add Indicator
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div class="table-card" style="margin-top: 2rem;">
+            <h2 class="card-title">Recent Activity</h2>
+            <div id="recentActivity" class="loading">
+                Add indicators using the forms above to see activity here
+            </div>
+        </div>
+    </div>
+
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner"></div>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script>
+        function showAlert(message, type = 'success') {
+            const alertContainer = document.getElementById('alertContainer');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.innerHTML = `
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    ${type === 'success'
+                        ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>'
+                        : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>'}
+                </svg>
+                <span>${message}</span>
+            `;
+            alertContainer.appendChild(alert);
+
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+
+        function parseInput(input) {
+            return input.split(/[\n,]/)
+                .map(item => item.trim())
+                .filter(item => item.length > 0);
+        }
+
+        document.getElementById('ipForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            showLoading();
+
+            const textarea = document.getElementById('ipAddresses');
+            const ipAddresses = parseInput(textarea.value);
+
+            if (ipAddresses.length === 0) {
+                hideLoading();
+                showAlert('Please enter at least one IP address', 'danger');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/ingest/ip', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ ip_addresses: ipAddresses })
+                });
+
+                const data = await response.json();
+                hideLoading();
+
+                if (response.ok) {
+                    showAlert(`Successfully added ${data.ingested} IP address(es)`, 'success');
+                    textarea.value = '';
+                    updateRecentActivity(`Added ${data.ingested} IP addresses`);
+                } else {
+                    showAlert(`Error: ${data.error}`, 'danger');
+                }
+            } catch (error) {
+                hideLoading();
+                showAlert(`Error: ${error.message}`, 'danger');
+            }
+        });
+
+        document.getElementById('domainForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            showLoading();
+
+            const textarea = document.getElementById('domains');
+            const domains = parseInput(textarea.value);
+
+            if (domains.length === 0) {
+                hideLoading();
+                showAlert('Please enter at least one domain', 'danger');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/ingest/domain', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ domains: domains })
+                });
+
+                const data = await response.json();
+                hideLoading();
+
+                if (response.ok) {
+                    showAlert(`Successfully added ${data.ingested} domain(s)`, 'success');
+                    textarea.value = '';
+                    updateRecentActivity(`Added ${data.ingested} domains`);
+                } else {
+                    showAlert(`Error: ${data.error}`, 'danger');
+                }
+            } catch (error) {
+                hideLoading();
+                showAlert(`Error: ${error.message}`, 'danger');
+            }
+        });
+
+        document.getElementById('singleForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            showLoading();
+
+            const type = document.getElementById('indicatorType').value;
+            const indicator = document.getElementById('singleIndicator').value.trim();
+
+            if (!type || !indicator) {
+                hideLoading();
+                showAlert('Please fill in all fields', 'danger');
+                return;
+            }
+
+            try {
+                const endpoint = type === 'ip' ? '/api/ingest/ip' : '/api/ingest/domain';
+                const payload = type === 'ip'
+                    ? { ip_addresses: [indicator] }
+                    : { domains: [indicator] };
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+                hideLoading();
+
+                if (response.ok) {
+                    showAlert(`Successfully added ${type.toUpperCase()}: ${indicator}`, 'success');
+                    document.getElementById('singleIndicator').value = '';
+                    document.getElementById('indicatorType').value = '';
+                    updateRecentActivity(`Added ${type}: ${indicator}`);
+                } else {
+                    showAlert(`Error: ${data.error}`, 'danger');
+                }
+            } catch (error) {
+                hideLoading();
+                showAlert(`Error: ${error.message}`, 'danger');
+            }
+        });
+
+        let activityLog = [];
+
+        function updateRecentActivity(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            activityLog.unshift(`[${timestamp}] ${message}`);
+
+            if (activityLog.length > 10) {
+                activityLog = activityLog.slice(0, 10);
+            }
+
+            const container = document.getElementById('recentActivity');
+            container.innerHTML = activityLog.map(log =>
+                `<div style="padding: 0.75rem; border-bottom: 1px solid var(--gray-200); font-weight: 500;">${log}</div>`
+            ).join('');
+        }
+    </script>
+</body>
+</html>

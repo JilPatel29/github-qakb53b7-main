@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reports - Threat Intelligence Platform</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <svg class="logo-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+                <span class="brand-text">ThreatIntel Platform</span>
+            </div>
+            <div class="nav-links">
+                <a href="/" class="nav-link">Dashboard</a>
+                <a href="/threats" class="nav-link">Threats</a>
+                <a href="/logs" class="nav-link">Log Correlations</a>
+                <a href="/mitre" class="nav-link">MITRE ATT&CK</a>
+                <a href="/reports" class="nav-link active">Reports</a>
+                <a href="/add-indicator" class="nav-link">Add Indicator</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <header class="page-header">
+            <h1>Threat Intelligence Reports</h1>
+            <button id="generateReportBtn" class="btn btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                Generate New Report
+            </button>
+        </header>
+
+        <div id="reportContent" class="report-content">
+            <div class="report-header">
+                <h2>Comprehensive Threat Analysis Report</h2>
+                <div class="report-meta">
+                    Generated: <span id="reportTimestamp">Loading...</span><br>
+                    Report Type: Comprehensive Threat Analysis
+                </div>
+            </div>
+
+            <div class="summary-section">
+                <h3>Executive Summary</h3>
+                <div class="summary-grid">
+                    <div class="summary-card">
+                        <h4>Total Indicators</h4>
+                        <div class="summary-value" id="reportTotalIndicators">0</div>
+                    </div>
+                    <div class="summary-card summary-high">
+                        <h4>High Risk</h4>
+                        <div class="summary-value" id="reportHighRisk">0</div>
+                    </div>
+                    <div class="summary-card summary-medium">
+                        <h4>Log Correlations</h4>
+                        <div class="summary-value" id="reportLogMatches">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="report-section">
+                <h3>High-Risk Indicators</h3>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Indicator</th>
+                                <th>Type</th>
+                                <th>Risk Score</th>
+                                <th>Threat Category</th>
+                                <th>Country</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportHighRiskTable">
+                            <tr>
+                                <td colspan="5" class="loading">Loading data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="report-section">
+                <h3>Threat Category Analysis</h3>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Count</th>
+                                <th>Percentage</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportCategoriesTable">
+                            <tr>
+                                <td colspan="3" class="loading">Loading data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="report-section">
+                <h3>MITRE ATT&CK Mapping</h3>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Technique</th>
+                                <th>Tactic</th>
+                                <th>Detections</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportMitreTable">
+                            <tr>
+                                <td colspan="3" class="loading">Loading data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="recommendations">
+                <h3>Security Recommendations</h3>
+                <ul>
+                    <li>Implement immediate blocking rules for all high-risk IP addresses at perimeter firewalls</li>
+                    <li>Enable DNS filtering to block queries to malicious domains</li>
+                    <li>Update endpoint protection and antivirus signatures</li>
+                    <li>Review access logs for any indicators of compromise</li>
+                    <li>Conduct threat hunting on identified MITRE ATT&CK techniques</li>
+                    <li>Establish monitoring for C2 communication patterns</li>
+                    <li>Implement network segmentation to limit lateral movement</li>
+                    <li>Review and update incident response procedures</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner"></div>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            loadReport();
+        });
+    </script>
+</body>
+</html>
