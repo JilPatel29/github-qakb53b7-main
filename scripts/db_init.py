@@ -74,6 +74,15 @@ def init_database():
         )
     ''')
 
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS uploaded_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT NOT NULL,
+            content TEXT NOT NULL,
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     conn.commit()
     conn.close()
     print("Database initialized successfully")
