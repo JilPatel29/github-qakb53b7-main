@@ -17,15 +17,25 @@ class ThreatIntelAPI:
         self.abuseipdb_key = os.getenv("ABUSEIPDB_API_KEY")
         self.otx_key = os.getenv("ALIENVAULT_OTX_KEY")
 
+        print("[API_INIT]", "="*60)
+        print(f"[API_INIT] VirusTotal Key Loaded: {bool(self.virustotal_key)}")
+        print(f"[API_INIT] AbuseIPDB Key Loaded: {bool(self.abuseipdb_key)}")
+        print(f"[API_INIT] OTX Key Loaded: {bool(self.otx_key)}")
+        print("[API_INIT]", "="*60)
+
     def fetch_virustotal_ip(self, ip):
         if not self.virustotal_key:
-            return self._mock_vt_ip(ip)
+            print(f"[VT_IP] NO API KEY - Skipping {ip}")
+            return {"score": 0, "country": "Unknown"}
 
         url = f"https://www.virustotal.com/api/v3/ip_addresses/{ip}"
         headers = {"x-apikey": self.virustotal_key}
 
         try:
+            print(f"[VT_IP] Requesting {ip}...")
             r = requests.get(url, headers=headers, timeout=10)
+            print(f"[VT_IP] Status: {r.status_code}")
+
             if r.status_code == 200:
                 data = r.json()
                 stats = data.get("data", {}).get("attributes", {}).get("last_analysis_stats", {})
@@ -33,57 +43,75 @@ class ThreatIntelAPI:
                 suspicious = stats.get("suspicious", 0)
                 score = min(100, (malicious + suspicious) * 10)
                 country = data.get("data", {}).get("attributes", {}).get("country", "Unknown")
+                print(f"[VT_IP] SUCCESS - Malicious: {malicious}, Suspicious: {suspicious}, Score: {score}, Country: {country}")
                 return {"score": score, "country": country}
+            else:
+                print(f"[VT_IP] ERROR {r.status_code}: {r.text[:200]}")
+                return {"score": 0, "country": "Unknown"}
         except Exception as e:
-            print(f"VirusTotal IP error: {e}")
-
-        return self._mock_vt_ip(ip)
+            print(f"[VT_IP] EXCEPTION: {str(e)}")
+            return {"score": 0, "country": "Unknown"}
 
     def fetch_virustotal_domain(self, domain):
         if not self.virustotal_key:
-            return self._mock_vt_domain(domain)
+            print(f"[VT_DOMAIN] NO API KEY - Skipping {domain}")
+            return {"score": 0}
 
         url = f"https://www.virustotal.com/api/v3/domains/{domain}"
         headers = {"x-apikey": self.virustotal_key}
 
         try:
+            print(f"[VT_DOMAIN] Requesting {domain}...")
             r = requests.get(url, headers=headers, timeout=10)
+            print(f"[VT_DOMAIN] Status: {r.status_code}")
+
             if r.status_code == 200:
                 data = r.json()
                 stats = data.get("data", {}).get("attributes", {}).get("last_analysis_stats", {})
                 malicious = stats.get("malicious", 0)
                 suspicious = stats.get("suspicious", 0)
                 score = min(100, (malicious + suspicious) * 10)
+                print(f"[VT_DOMAIN] SUCCESS - Malicious: {malicious}, Suspicious: {suspicious}, Score: {score}")
                 return {"score": score}
+            else:
+                print(f"[VT_DOMAIN] ERROR {r.status_code}: {r.text[:200]}")
+                return {"score": 0}
         except Exception as e:
-            print(f"VirusTotal domain error: {e}")
-
-        return self._mock_vt_domain(domain)
+            print(f"[VT_DOMAIN] EXCEPTION: {str(e)}")
+            return {"score": 0}
 
     def fetch_virustotal_hash(self, file_hash):
         if not self.virustotal_key:
-            return self._mock_vt_hash(file_hash)
+            print(f"[VT_HASH] NO API KEY - Skipping {file_hash[:16]}...")
+            return {"score": 0}
 
         url = f"https://www.virustotal.com/api/v3/files/{file_hash}"
         headers = {"x-apikey": self.virustotal_key}
 
         try:
+            print(f"[VT_HASH] Requesting {file_hash[:16]}...")
             r = requests.get(url, headers=headers, timeout=10)
+            print(f"[VT_HASH] Status: {r.status_code}")
+
             if r.status_code == 200:
                 data = r.json()
                 stats = data.get("data", {}).get("attributes", {}).get("last_analysis_stats", {})
                 malicious = stats.get("malicious", 0)
                 suspicious = stats.get("suspicious", 0)
                 score = min(100, (malicious + suspicious) * 5)
+                print(f"[VT_HASH] SUCCESS - Malicious: {malicious}, Suspicious: {suspicious}, Score: {score}")
                 return {"score": score}
+            else:
+                print(f"[VT_HASH] ERROR {r.status_code}: {r.text[:200]}")
+                return {"score": 0}
         except Exception as e:
-            print(f"VirusTotal hash error: {e}")
-
-        return self._mock_vt_hash(file_hash)
+            print(f"[VT_HASH] EXCEPTION: {str(e)}")
+            return {"score": 0}
 
     def fetch_virustotal_url(self, url_to_check):
         if not self.virustotal_key:
-            return self._mock_vt_url(url_to_check)
+            print(f"[VT_URL] NO API KEY - Skipping {url_to_check[:50]}")
+            return {"score": 0}
 
         import base64
         url_id = base64.urlsafe_b64encode(url_to_check.encode()).decode().strip("=")
@@ -91,58 +119,77 @@ class ThreatIntelAPI:
         headers = {"x-apikey": self.virustotal_key}
 
         try:
+            print(f"[VT_URL] Requesting {url_to_check[:50]}...")
             r = requests.get(url, headers=headers, timeout=10)
+            print(f"[VT_URL] Status: {r.status_code}")
+
             if r.status_code == 200:
                 data = r.json()
                 stats = data.get("data", {}).get("attributes", {}).get("last_analysis_stats", {})
                 malicious = stats.get("malicious", 0)
                 suspicious = stats.get("suspicious", 0)
                 score = min(100, (malicious + suspicious) * 10)
+                print(f"[VT_URL] SUCCESS - Malicious: {malicious}, Suspicious: {suspicious}, Score: {score}")
                 return {"score": score}
+            else:
+                print(f"[VT_URL] ERROR {r.status_code}: {r.text[:200]}")
+                return {"score": 0}
         except Exception as e:
-            print(f"VirusTotal URL error: {e}")
-
-        return self._mock_vt_url(url_to_check)
+            print(f"[VT_URL] EXCEPTION: {str(e)}")
+            return {"score": 0}
 
     def fetch_abuseipdb(self, ip):
         if not self.abuseipdb_key:
-            return self._mock_abuseipdb(ip)
+            print(f"[ABUSEIPDB] NO API KEY - Skipping {ip}")
+            return {"score": 0, "country": "Unknown"}
 
         url = "https://api.abuseipdb.com/api/v2/check"
         headers = {"Key": self.abuseipdb_key, "Accept": "application/json"}
         params = {"ipAddress": ip, "maxAgeInDays": 90}
 
         try:
+            print(f"[ABUSEIPDB] Requesting {ip}...")
             r = requests.get(url, headers=headers, params=params, timeout=10)
+            print(f"[ABUSEIPDB] Status: {r.status_code}")
+
             if r.status_code == 200:
                 data = r.json()["data"]
-                return {
-                    "score": data["abuseConfidenceScore"],
-                    "country": data["countryCode"]
-                }
+                score = data["abuseConfidenceScore"]
+                country = data["countryCode"]
+                print(f"[ABUSEIPDB] SUCCESS - Score: {score}, Country: {country}")
+                return {"score": score, "country": country}
+            else:
+                print(f"[ABUSEIPDB] ERROR {r.status_code}: {r.text[:200]}")
+                return {"score": 0, "country": "Unknown"}
         except Exception as e:
-            print(f"AbuseIPDB error: {e}")
-
-        return self._mock_abuseipdb(ip)
+            print(f"[ABUSEIPDB] EXCEPTION: {str(e)}")
+            return {"score": 0, "country": "Unknown"}
 
     def fetch_otx_ip(self, ip):
         if not self.otx_key:
-            return self._mock_otx(ip)
+            print(f"[OTX] NO API KEY - Skipping {ip}")
+            return {"score": 0}
 
         url = f"https://otx.alienvault.com/api/v1/indicators/IPv4/{ip}/general"
         headers = {"X-OTX-API-KEY": self.otx_key}
 
         try:
+            print(f"[OTX] Requesting {ip}...")
             r = requests.get(url, headers=headers, timeout=10)
+            print(f"[OTX] Status: {r.status_code}")
+
             if r.status_code == 200:
                 data = r.json()
                 pulse_count = data.get("pulse_info", {}).get("count", 0)
                 score = min(100, pulse_count * 20)
+                print(f"[OTX] SUCCESS - Pulse Count: {pulse_count}, Score: {score}")
                 return {"score": score}
+            else:
+                print(f"[OTX] ERROR {r.status_code}: {r.text[:200]}")
+                return {"score": 0}
         except Exception as e:
-            print(f"OTX error: {e}")
-
-        return self._mock_otx(ip)
+            print(f"[OTX] EXCEPTION: {str(e)}")
+            return {"score": 0}
 
     def _mock_vt_ip(self, ip):
         import random
