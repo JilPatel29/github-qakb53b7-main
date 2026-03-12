@@ -28,10 +28,11 @@ class LogCorrelator:
     @staticmethod
     def correlate_logs():
         """Correlate network logs with threat indicators"""
+        import os
+
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
-        # Clear existing correlations
         cursor.execute('DELETE FROM log_correlations')
 
         cursor.execute('SELECT indicator, type FROM enriched_indicators')
@@ -39,16 +40,24 @@ class LogCorrelator:
 
         indicator_dict = {ind[0]: ind[1] for ind in indicators}
 
-        try:
-            with open(LOG_PATH, 'r') as f:
-                logs = f.readlines()
-        except FileNotFoundError:
-            print(f"Log file not found: {LOG_PATH}")
+        all_logs = []
+
+        log_files = [LOG_PATH, 'logs/uploaded_logs.txt']
+        for log_file in log_files:
+            if os.path.exists(log_file):
+                try:
+                    with open(log_file, 'r') as f:
+                        all_logs.extend(f.readlines())
+                except Exception as e:
+                    print(f"Error reading {log_file}: {e}")
+
+        if not all_logs:
+            print("No log files found")
             conn.close()
             return
 
         matches = []
-        for log_line in logs:
+        for log_line in all_logs:
             parsed = LogCorrelator.parse_log_line(log_line)
             if not parsed:
                 continue

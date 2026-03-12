@@ -348,6 +348,110 @@ def ingest_domain():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/ingest/hash', methods=['POST'])
+def ingest_hash():
+    try:
+        data = request.get_json()
+        hashes = data.get('hashes', [])
+
+        if not hashes:
+            return jsonify({'error': 'No file hashes provided'}), 400
+
+        ingestor = ThreatIngestor()
+        results = ingestor.ingest_file_hashes(hashes)
+        ingestor.close()
+
+        LogCorrelator.correlate_logs()
+
+        return jsonify({
+            'success': True,
+            'ingested': len(results),
+            'results': results
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/ingest/url', methods=['POST'])
+def ingest_url():
+    try:
+        data = request.get_json()
+        urls = data.get('urls', [])
+
+        if not urls:
+            return jsonify({'error': 'No URLs provided'}), 400
+
+        ingestor = ThreatIngestor()
+        results = ingestor.ingest_urls(urls)
+        ingestor.close()
+
+        LogCorrelator.correlate_logs()
+
+        return jsonify({
+            'success': True,
+            'ingested': len(results),
+            'results': results
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/upload-logs', methods=['POST'])
+def upload_logs():
+    try:
+        data = request.get_json()
+        log_content = data.get('log_content', '')
+        filename = data.get('filename', 'uploaded_logs.txt')
+
+        if not log_content:
+            return jsonify({'error': 'No log content provided'}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO uploaded_logs (filename, content)
+            VALUES (?, ?)
+        """, (filename, log_content))
+
+        conn.commit()
+        conn.close()
+
+        with open('logs/uploaded_logs.txt', 'a') as f:
+            f.write('\n' + log_content)
+
+        LogCorrelator.correlate_logs()
+
+        return jsonify({
+            'success': True,
+            'message': 'Logs uploaded and correlated successfully'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/generate-pdf-report', methods=['GET'])
+def generate_pdf_report():
+    try:
+        from scripts.pdf_generator import PDFReportGenerator
+        import tempfile
+        import os
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+        temp_path = temp_file.name
+        temp_file.close()
+
+        generator = PDFReportGenerator()
+        generator.generate_report(temp_path)
+        generator.close()
+
+        from flask import send_file
+        return send_file(
+            temp_path,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name='threat_intelligence_report.pdf'
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/refresh', methods=['POST'])
 def refresh_data():
     try:

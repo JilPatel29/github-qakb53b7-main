@@ -118,6 +118,25 @@
         </div>
 
         <div class="card">
+            <h2 class="card-title">Upload Network Logs</h2>
+            <form id="logUploadForm" class="form-grid">
+                <div class="form-group">
+                    <label for="logContent">Network Logs (paste or type)</label>
+                    <textarea id="logContent" rows="8" placeholder="Paste your network logs here. Format:&#10;YYYY-MM-DD HH:MM:SS source_ip -> destination_ip_or_domain&#10;&#10;Example:&#10;2026-01-01 10:10:21 192.168.1.5 -> 185.234.219.12&#10;2026-01-01 10:11:11 192.168.1.8 -> malicious-site.com" required></textarea>
+                    <small style="color: var(--text-secondary);">Logs will be automatically correlated with threat indicators</small>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-success">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                        </svg>
+                        Upload & Correlate Logs
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div class="card">
             <div class="card-header">
                 <h2 class="card-title">Suspicious Network Activity</h2>
                 <div class="search-box">
@@ -158,6 +177,68 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             loadLogs();
+        });
+
+        function showAlert(message, type = 'success') {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.innerHTML = `
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    ${type === 'success'
+                        ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>'
+                        : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>'}
+                </svg>
+                <span>${message}</span>
+            `;
+
+            const container = document.querySelector('.content-area');
+            container.insertBefore(alertDiv, container.firstChild);
+
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 5000);
+        }
+
+        document.getElementById('logUploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            showLoading();
+
+            const logContent = document.getElementById('logContent').value.trim();
+
+            if (!logContent) {
+                hideLoading();
+                showAlert('Please enter log content', 'danger');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/upload-logs', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        log_content: logContent,
+                        filename: `uploaded_${Date.now()}.txt`
+                    })
+                });
+
+                const data = await response.json();
+                hideLoading();
+
+                if (response.ok) {
+                    showAlert('Logs uploaded and correlated successfully', 'success');
+                    document.getElementById('logContent').value = '';
+                    setTimeout(() => {
+                        loadLogs();
+                    }, 1000);
+                } else {
+                    showAlert(`Error: ${data.error}`, 'danger');
+                }
+            } catch (error) {
+                hideLoading();
+                showAlert(`Error: ${error.message}`, 'danger');
+            }
         });
     </script>
 </body>

@@ -120,6 +120,44 @@
                             </div>
                         </form>
                     </div>
+
+                    <div class="card">
+                        <h2 class="card-title">Add File Hashes</h2>
+                        <form id="hashForm" class="form-grid">
+                            <div class="form-group">
+                                <label for="hashes">File Hashes (MD5, SHA1, SHA256 - one per line or comma-separated)</label>
+                                <textarea id="hashes" placeholder="Enter file hashes, e.g.&#10;44d88612fea8a8f36de82e1278abb02f&#10;3395856ce81f2b7382dee72602f798b642f14140&#10;275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f" required></textarea>
+                                <small style="color: var(--text-secondary);">Add multiple file hashes, one per line or separated by commas</small>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-success">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 4v16m8-8H4"/>
+                                    </svg>
+                                    Add File Hashes
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <h2 class="card-title">Add URLs</h2>
+                        <form id="urlForm" class="form-grid">
+                            <div class="form-group">
+                                <label for="urls">URLs (one per line or comma-separated)</label>
+                                <textarea id="urls" placeholder="Enter URLs, e.g.&#10;http://malicious-site.com/payload&#10;https://phishing-page.net/login&#10;http://suspicious-download.org/file.exe" required></textarea>
+                                <small style="color: var(--text-secondary);">Add multiple URLs, one per line or separated by commas</small>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-success">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 4v16m8-8H4"/>
+                                    </svg>
+                                    Add URLs
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
 
@@ -133,11 +171,13 @@
                                 <option value="">Select Type</option>
                                 <option value="ip">IP Address</option>
                                 <option value="domain">Domain</option>
+                                <option value="hash">File Hash</option>
+                                <option value="url">URL</option>
                             </select>
                         </div>
                         <div class="form-group">
                             <label for="singleIndicator">Indicator Value</label>
-                            <input type="text" id="singleIndicator" placeholder="e.g., 192.168.1.1 or example.com" required>
+                            <input type="text" id="singleIndicator" placeholder="e.g., 192.168.1.1, example.com, hash, or URL" required>
                         </div>
                     </div>
                     <div class="form-actions">
@@ -267,6 +307,82 @@
             }
         });
 
+        document.getElementById('hashForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            showLoading();
+
+            const textarea = document.getElementById('hashes');
+            const hashes = parseInput(textarea.value);
+
+            if (hashes.length === 0) {
+                hideLoading();
+                showAlert('Please enter at least one file hash', 'danger');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/ingest/hash', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ hashes: hashes })
+                });
+
+                const data = await response.json();
+                hideLoading();
+
+                if (response.ok) {
+                    showAlert(`Successfully added ${data.ingested} file hash(es)`, 'success');
+                    textarea.value = '';
+                    updateRecentActivity(`Added ${data.ingested} file hashes`);
+                } else {
+                    showAlert(`Error: ${data.error}`, 'danger');
+                }
+            } catch (error) {
+                hideLoading();
+                showAlert(`Error: ${error.message}`, 'danger');
+            }
+        });
+
+        document.getElementById('urlForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            showLoading();
+
+            const textarea = document.getElementById('urls');
+            const urls = parseInput(textarea.value);
+
+            if (urls.length === 0) {
+                hideLoading();
+                showAlert('Please enter at least one URL', 'danger');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/ingest/url', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ urls: urls })
+                });
+
+                const data = await response.json();
+                hideLoading();
+
+                if (response.ok) {
+                    showAlert(`Successfully added ${data.ingested} URL(s)`, 'success');
+                    textarea.value = '';
+                    updateRecentActivity(`Added ${data.ingested} URLs`);
+                } else {
+                    showAlert(`Error: ${data.error}`, 'danger');
+                }
+            } catch (error) {
+                hideLoading();
+                showAlert(`Error: ${error.message}`, 'danger');
+            }
+        });
+
         document.getElementById('singleForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             showLoading();
@@ -281,10 +397,30 @@
             }
 
             try {
-                const endpoint = type === 'ip' ? '/api/ingest/ip' : '/api/ingest/domain';
-                const payload = type === 'ip'
-                    ? { ip_addresses: [indicator] }
-                    : { domains: [indicator] };
+                let endpoint, payload;
+
+                switch(type) {
+                    case 'ip':
+                        endpoint = '/api/ingest/ip';
+                        payload = { ip_addresses: [indicator] };
+                        break;
+                    case 'domain':
+                        endpoint = '/api/ingest/domain';
+                        payload = { domains: [indicator] };
+                        break;
+                    case 'hash':
+                        endpoint = '/api/ingest/hash';
+                        payload = { hashes: [indicator] };
+                        break;
+                    case 'url':
+                        endpoint = '/api/ingest/url';
+                        payload = { urls: [indicator] };
+                        break;
+                    default:
+                        hideLoading();
+                        showAlert('Invalid indicator type', 'danger');
+                        return;
+                }
 
                 const response = await fetch(endpoint, {
                     method: 'POST',
