@@ -172,14 +172,25 @@ def run_automated_scan():
 
     scanner.perform_full_scan()
 
-    scanner.filter_existing_iocs()   # ✅ MAIN FIX
+    scanner.filter_existing_iocs()
 
-    scanner.ingest_to_database()
+    new_counts = {
+        'ips': len(scanner.iocs['ips']),
+        'domains': len(scanner.iocs['domains']),
+        'urls': len(scanner.iocs['urls']),
+        'hashes': len(scanner.iocs['hashes']),
+    }
+
+    if any(v > 0 for v in new_counts.values()):
+        scanner.ingest_to_database()
+    else:
+        print("[SKIP] No new IOCs to ingest")
 
     from scripts.correlate_logs import LogCorrelator
     LogCorrelator.correlate_logs()
 
-    print("[COMPLETE] Scan finished")
+    print(f"[COMPLETE] Scan finished. New IOCs: {new_counts}")
+    return new_counts
 
 if __name__ == '__main__':
     run_automated_scan()

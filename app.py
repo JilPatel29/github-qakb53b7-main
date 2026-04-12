@@ -40,17 +40,23 @@ def _continuous_ingestion_worker(interval):
                 _ingestion_state['log'].insert(0, {'time': ts, 'status': 'scanning', 'msg': 'Scanning DVWA for new IOCs...'})
                 _ingestion_state['log'] = _ingestion_state['log'][:50]
 
-            iocs = run_automated_scan()
+            new_counts = run_automated_scan()
 
             ts2 = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             with _ingestion_lock:
                 _ingestion_state['last_scan'] = ts2
                 _ingestion_state['scan_count'] += 1
-                total = sum(len(v) if isinstance(v, list) else v for v in iocs.values()) if iocs else 0
+                if new_counts is None:
+                    new_counts = {'ips': 0, 'domains': 0, 'urls': 0, 'hashes': 0}
+                total_new = sum(new_counts.values())
+                if total_new == 0:
+                    msg = 'Scan complete. No new IOCs found (all already ingested)'
+                else:
+                    msg = f'Scan complete. New - IPs: {new_counts["ips"]}, Domains: {new_counts["domains"]}, URLs: {new_counts["urls"]}, Hashes: {new_counts["hashes"]}'
                 _ingestion_state['log'].insert(0, {
                     'time': ts2,
                     'status': 'ok',
-                    'msg': f'Scan complete. IPs: {len(iocs.get("ips",[]))}, Domains: {len(iocs.get("domains",[]))}, URLs: {len(iocs.get("urls",[]))}, Hashes: {len(iocs.get("hashes",[]))}'
+                    'msg': msg
                 })
                 _ingestion_state['log'] = _ingestion_state['log'][:50]
         except Exception as e:
