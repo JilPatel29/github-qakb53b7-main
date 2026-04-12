@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MITRE ATT&CK - Threat Intelligence</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+            </div>
+            <span class="brand-text">ThreatIntel</span>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="nav-section">
+                <div class="nav-section-title">MAIN</div>
+                <a href="/" class="nav-item">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                    </svg>
+                    <span>Dashboard</span>
+                </a>
+                <a href="/threats" class="nav-item">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    <span>Threat Indicators</span>
+                </a>
+                <a href="/logs" class="nav-item">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <span>Log Correlations</span>
+                </a>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">ANALYSIS</div>
+                <a href="/mitre" class="nav-item active">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                    <span>MITRE ATT&CK</span>
+                </a>
+                <a href="/reports" class="nav-item">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <span>Reports</span>
+                </a>
+            </div>
+            <div class="nav-section">
+                <div class="nav-section-title">DATA MANAGEMENT</div>
+                <a href="/add-indicator" class="nav-item">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 4v16m8-8H4"/>
+                    </svg>
+                    <span>Add Indicators</span>
+                </a>
+            </div>
+        </nav>
+    </aside>
+
+    <div class="main-content">
+        <header class="topbar">
+            <h1 class="page-title">MITRE ATT&CK Framework</h1>
+            <div class="topbar-actions">
+                <button id="refreshBtn" class="btn btn-primary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    Refresh
+                </button>
+            </div>
+        </header>
+
+        <div class="content-area">
+            <div class="charts-grid">
+            <div class="card">
+                <h2 class="card-title">Top Techniques Detected</h2>
+                <canvas id="techniquesChart"></canvas>
+            </div>
+
+            <div class="card">
+                <h2 class="card-title">Tactics Distribution</h2>
+                <canvas id="tacticsChart"></canvas>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">MITRE ATT&CK Techniques</h2>
+                <div class="search-box">
+                    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    <input type="text" id="searchInput" placeholder="Search techniques...">
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="mitreTable">
+                    <thead>
+                        <tr>
+                            <th>TECHNIQUE</th>
+                            <th>TACTIC</th>
+                            <th>COUNT</th>
+                            <th>RISK DISTRIBUTION</th>
+                        </tr>
+                    </thead>
+                    <tbody id="mitreBody">
+                        <tr>
+                            <td colspan="4" class="loading">Loading data...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            loadMitre();
+        });
+    </script>
+</body>
+</html>
