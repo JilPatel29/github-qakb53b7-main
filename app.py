@@ -40,19 +40,21 @@ def _continuous_ingestion_worker(interval):
                 _ingestion_state['log'].insert(0, {'time': ts, 'status': 'scanning', 'msg': 'Scanning DVWA for new IOCs...'})
                 _ingestion_state['log'] = _ingestion_state['log'][:50]
 
-            new_counts = run_automated_scan()
+            iocs = run_automated_scan()
 
             ts2 = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             with _ingestion_lock:
                 _ingestion_state['last_scan'] = ts2
                 _ingestion_state['scan_count'] += 1
-                if new_counts is None:
-                    new_counts = {'ips': 0, 'domains': 0, 'urls': 0, 'hashes': 0}
-                total_new = sum(new_counts.values())
-                if total_new == 0:
-                    msg = 'Scan complete. No new IOCs found (all already ingested)'
-                else:
-                    msg = f'Scan complete. New - IPs: {new_counts["ips"]}, Domains: {new_counts["domains"]}, URLs: {new_counts["urls"]}, Hashes: {new_counts["hashes"]}'
+                total = sum(len(v) if isinstance(v, list) else v for v in iocs.values()) if iocs else 0
+                new_ips = len(iocs.get("ips", []))
+                new_domains = len(iocs.get("domains", []))
+                new_urls = len(iocs.get("urls", []))
+                new_hashes = len(iocs.get("hashes", []))
+                new_total = new_ips + new_domains + new_urls + new_hashes
+                msg = (f'Scan complete. New IOCs: {new_total} '
+                       f'(IPs: {new_ips}, Domains: {new_domains}, URLs: {new_urls}, Hashes: {new_hashes})'
+                       if new_total > 0 else 'Scan complete. No new IOCs (all already ingested)')
                 _ingestion_state['log'].insert(0, {
                     'time': ts2,
                     'status': 'ok',
