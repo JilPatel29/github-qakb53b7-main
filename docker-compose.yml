@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  dvwa:
+    image: vulnerables/web-dvwa
+    container_name: dvwa_threat_intel
+    ports:
+      - "4280:80"
+    environment:
+      - MYSQL_DATABASE=dvwa
+      - MYSQL_USER=dvwa
+      - MYSQL_PASSWORD=dvwa
+      - MYSQL_ROOT_PASSWORD=dvwa_root
+    restart: unless-stopped
+    networks:
+      - threat_intel_network
+
+networks:
+  threat_intel_network:
+    driver: bridge

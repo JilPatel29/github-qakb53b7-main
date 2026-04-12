@@ -1,8 +1,11 @@
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, Response
 from flask_cors import CORS
 import sqlite3
 import sys
 import os
+import threading
+import time
+import json
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -13,6 +16,58 @@ from scripts.correlate_logs import LogCorrelator
 
 app = Flask(__name__)
 CORS(app)
+
+_ingestion_state = {
+    'running': False,
+    'thread': None,
+    'interval': 30,
+    'last_scan': None,
+    'scan_count': 0,
+    'log': []
+}
+_ingestion_lock = threading.Lock()
+
+
+def _continuous_ingestion_worker(interval):
+    from scripts.dvwa_scanner import run_automated_scan
+    while True:
+        with _ingestion_lock:
+            if not _ingestion_state['running']:
+                break
+        try:
+            ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            with _ingestion_lock:
+                _ingestion_state['log'].insert(0, {'time': ts, 'status': 'scanning', 'msg': 'Scanning DVWA for new IOCs...'})
+                _ingestion_state['log'] = _ingestion_state['log'][:50]
+
+            iocs = run_automated_scan()
+
+            ts2 = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            with _ingestion_lock:
+                _ingestion_state['last_scan'] = ts2
+                _ingestion_state['scan_count'] += 1
+                total = sum(len(v) if isinstance(v, list) else v for v in iocs.values()) if iocs else 0
+                _ingestion_state['log'].insert(0, {
+                    'time': ts2,
+                    'status': 'ok',
+                    'msg': f'Scan complete. IPs: {len(iocs.get("ips",[]))}, Domains: {len(iocs.get("domains",[]))}, URLs: {len(iocs.get("urls",[]))}, Hashes: {len(iocs.get("hashes",[]))}'
+                })
+                _ingestion_state['log'] = _ingestion_state['log'][:50]
+        except Exception as e:
+            ts_e = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            with _ingestion_lock:
+                _ingestion_state['log'].insert(0, {'time': ts_e, 'status': 'error', 'msg': f'Error: {str(e)}'})
+                _ingestion_state['log'] = _ingestion_state['log'][:50]
+
+        elapsed = 0
+        with _ingestion_lock:
+            interval_val = _ingestion_state['interval']
+        while elapsed < interval_val:
+            with _ingestion_lock:
+                if not _ingestion_state['running']:
+                    return
+            time.sleep(1)
+            elapsed += 1
 
 DB_PATH = 'data/threat_intel.db'
 
@@ -467,6 +522,189 @@ def refresh_data():
 @app.route('/api/health', methods=['GET'])
 def health_check():
     return jsonify({'status': 'healthy', 'service': 'threat-intelligence-api'})
+
+@app.route('/api/alerts', methods=['GET'])
+def get_alerts():
+    try:
+        from scripts.alert_system import AlertSystem
+
+        alert_system = AlertSystem()
+        active_alerts = alert_system.get_active_alerts()
+        alert_system.close()
+
+        return jsonify(active_alerts)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/alerts/stats', methods=['GET'])
+def get_alert_stats():
+    try:
+        from scripts.alert_system import AlertSystem
+
+        alert_system = AlertSystem()
+        stats = alert_system.get_alert_statistics()
+        alert_system.close()
+
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/alerts/acknowledge/<int:alert_id>', methods=['POST'])
+def acknowledge_alert(alert_id):
+    try:
+        from scripts.alert_system import AlertSystem
+
+        alert_system = AlertSystem()
+        alert_system.acknowledge_alert(alert_id)
+        alert_system.close()
+
+        return jsonify({'success': True, 'message': f'Alert {alert_id} acknowledged'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/scan-logs', methods=['GET'])
+def get_scan_logs():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT scan_timestamp, target, ips_found, domains_found,
+                   urls_found, hashes_found, total_iocs, scan_status
+            FROM scan_logs
+            ORDER BY scan_timestamp DESC
+            LIMIT 50
+        ''')
+
+        logs = []
+        for row in cursor.fetchall():
+            logs.append({
+                'timestamp': row[0],
+                'target': row[1],
+                'ips_found': row[2],
+                'domains_found': row[3],
+                'urls_found': row[4],
+                'hashes_found': row[5],
+                'total_iocs': row[6],
+                'status': row[7]
+            })
+
+        conn.close()
+        return jsonify(logs)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/trigger/scan', methods=['POST'])
+def trigger_scan():
+    try:
+        from scripts.dvwa_scanner import run_automated_scan
+
+        iocs = run_automated_scan()
+
+        return jsonify({
+            'success': True,
+            'message': 'DVWA scan completed',
+            'iocs': {
+                'ips': len(iocs['ips']),
+                'domains': len(iocs['domains']),
+                'urls': len(iocs['urls']),
+                'hashes': len(iocs['hashes'])
+            }
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/trigger/alert-check', methods=['POST'])
+def trigger_alert_check():
+    try:
+        from scripts.alert_system import run_alert_check
+
+        run_alert_check()
+
+        return jsonify({
+            'success': True,
+            'message': 'Alert check completed'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/trigger/report', methods=['POST'])
+def trigger_report():
+    try:
+        from scripts.daily_report import generate_daily_report
+
+        pdf_path = generate_daily_report()
+
+        return jsonify({
+            'success': True,
+            'message': 'Daily report generated',
+            'report_path': pdf_path
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/ingestion/start', methods=['POST'])
+def start_ingestion():
+    data = request.get_json() or {}
+    interval = int(data.get('interval', 30))
+    interval = max(10, min(interval, 3600))
+
+    with _ingestion_lock:
+        if _ingestion_state['running']:
+            return jsonify({'success': False, 'message': 'Already running'})
+        _ingestion_state['running'] = True
+        _ingestion_state['interval'] = interval
+        t = threading.Thread(target=_continuous_ingestion_worker, args=(interval,), daemon=True)
+        _ingestion_state['thread'] = t
+        t.start()
+
+    return jsonify({'success': True, 'message': f'Continuous ingestion started (every {interval}s)'})
+
+
+@app.route('/api/ingestion/stop', methods=['POST'])
+def stop_ingestion():
+    with _ingestion_lock:
+        if not _ingestion_state['running']:
+            return jsonify({'success': False, 'message': 'Not running'})
+        _ingestion_state['running'] = False
+
+    return jsonify({'success': True, 'message': 'Continuous ingestion stopped'})
+
+
+@app.route('/api/ingestion/status', methods=['GET'])
+def ingestion_status():
+    with _ingestion_lock:
+        return jsonify({
+            'running': _ingestion_state['running'],
+            'interval': _ingestion_state['interval'],
+            'last_scan': _ingestion_state['last_scan'],
+            'scan_count': _ingestion_state['scan_count'],
+            'log': _ingestion_state['log'][:20]
+        })
+
+
+@app.route('/api/ingestion/stream')
+def ingestion_stream():
+    def event_stream():
+        last_count = -1
+        while True:
+            with _ingestion_lock:
+                current_count = len(_ingestion_state['log'])
+                running = _ingestion_state['running']
+                payload = {
+                    'running': running,
+                    'interval': _ingestion_state['interval'],
+                    'last_scan': _ingestion_state['last_scan'],
+                    'scan_count': _ingestion_state['scan_count'],
+                    'log': _ingestion_state['log'][:20]
+                }
+            if current_count != last_count:
+                last_count = current_count
+                yield f"data: {json.dumps(payload)}\n\n"
+            time.sleep(1)
+    return Response(event_stream(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
 
 def initialize_app():
     os.makedirs('data', exist_ok=True)

@@ -5,6 +5,167 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Log Correlations - Threat Intelligence</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <style>
+        .ingestion-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .ingestion-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .ingestion-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+        .ingestion-controls {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        .interval-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .interval-group label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .interval-group input {
+            width: 80px;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+        .interval-group input:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+        .status-row {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            padding: 0.875rem 1rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 1.25rem;
+            border: 1px solid var(--border-color);
+        }
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            flex-shrink: 0;
+        }
+        .status-dot.running {
+            background: var(--success);
+            box-shadow: 0 0 6px var(--success-glow);
+            animation: pulse-dot 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.3); }
+        }
+        .status-meta {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        .status-meta span {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .activity-log {
+            max-height: 220px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-secondary);
+        }
+        .log-entry {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.8rem;
+        }
+        .log-entry:last-child { border-bottom: none; }
+        .log-entry .log-time {
+            color: var(--text-muted);
+            white-space: nowrap;
+            flex-shrink: 0;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+        .log-entry .log-msg { color: var(--text-secondary); word-break: break-all; }
+        .log-entry.ok .log-msg { color: var(--success); }
+        .log-entry.error .log-msg { color: var(--danger); }
+        .log-entry.scanning .log-msg { color: var(--accent-primary); }
+        .log-empty {
+            padding: 1.5rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+        .btn-start {
+            background: var(--success);
+            color: white;
+            border: none;
+        }
+        .btn-start:hover:not(:disabled) {
+            background: #26b563;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px var(--success-glow);
+        }
+        .btn-stop {
+            background: var(--danger);
+            color: white;
+            border: none;
+        }
+        .btn-stop:hover:not(:disabled) {
+            background: #e83e4e;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px var(--danger-glow);
+        }
+        .btn-stop:disabled, .btn-start:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .countdown-bar-wrap { margin-top: 0.75rem; }
+        .countdown-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.35rem; }
+        .countdown-bar { height: 4px; background: var(--border-color); border-radius: 4px; overflow: hidden; }
+        .countdown-fill {
+            height: 100%;
+            background: var(--accent-primary);
+            border-radius: 4px;
+            transition: width 1s linear;
+            width: 0%;
+        }
+    </style>
 </head>
 <body>
     <aside class="sidebar">
@@ -79,93 +240,136 @@
         </header>
 
         <div class="content-area">
+
+            <div class="ingestion-panel">
+                <div class="ingestion-header">
+                    <div class="ingestion-title">Automated DVWA Log Ingestion</div>
+                    <div class="ingestion-controls">
+                        <div class="interval-group">
+                            <label for="scanInterval">Interval (sec):</label>
+                            <input type="number" id="scanInterval" value="30" min="10" max="3600">
+                        </div>
+                        <button id="startIngestionBtn" class="btn btn-start">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="5 3 19 12 5 21 5 3"/>
+                            </svg>
+                            Start Auto-Ingest
+                        </button>
+                        <button id="stopIngestionBtn" class="btn btn-stop" disabled>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="6" y="6" width="12" height="12" rx="2"/>
+                            </svg>
+                            Stop
+                        </button>
+                    </div>
+                </div>
+
+                <div class="status-row">
+                    <div class="status-indicator">
+                        <div class="status-dot" id="statusDot"></div>
+                        <span id="statusText">Stopped</span>
+                    </div>
+                    <div class="status-meta">Scans completed: <span id="scanCount">0</span></div>
+                    <div class="status-meta">Last scan: <span id="lastScan">Never</span></div>
+                    <div class="status-meta">Next scan in: <span id="nextScanIn">-</span></div>
+                </div>
+
+                <div class="countdown-bar-wrap" id="countdownWrap" style="display:none;">
+                    <div class="countdown-label">Next scan countdown</div>
+                    <div class="countdown-bar"><div class="countdown-fill" id="countdownFill"></div></div>
+                </div>
+
+                <div style="margin-top: 1rem;">
+                    <div style="font-size:0.8rem; color: var(--text-muted); margin-bottom: 0.5rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Live Activity</div>
+                    <div class="activity-log" id="activityLog">
+                        <div class="log-empty">No activity yet. Press Start Auto-Ingest to begin.</div>
+                    </div>
+                </div>
+            </div>
+
             <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon red">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                    </svg>
-                </div>
-                <div class="stat-content">
-                    <div class="stat-value" id="highRiskMatches">0</div>
-                    <div class="stat-label">High Risk Matches</div>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-icon orange">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                </div>
-                <div class="stat-content">
-                    <div class="stat-value" id="mediumRiskMatches">0</div>
-                    <div class="stat-label">Medium Risk Matches</div>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-icon blue">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                    </svg>
-                </div>
-                <div class="stat-content">
-                    <div class="stat-value" id="totalMatches">0</div>
-                    <div class="stat-label">Total Matches</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2 class="card-title">Upload Network Logs</h2>
-            <form id="logUploadForm" class="form-grid">
-                <div class="form-group">
-                    <label for="logContent">Network Logs (paste or type)</label>
-                    <textarea id="logContent" rows="8" placeholder="Paste your network logs here. Format:&#10;YYYY-MM-DD HH:MM:SS source_ip -> destination_ip_or_domain&#10;&#10;Example:&#10;2026-01-01 10:10:21 192.168.1.5 -> 185.234.219.12&#10;2026-01-01 10:11:11 192.168.1.8 -> malicious-site.com" required></textarea>
-                    <small style="color: var(--text-secondary);">Logs will be automatically correlated with threat indicators</small>
-                </div>
-                <div class="form-actions">
-                    <button type="submit" class="btn btn-success">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                <div class="stat-card">
+                    <div class="stat-icon red">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                         </svg>
-                        Upload & Correlate Logs
-                    </button>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="highRiskMatches">0</div>
+                        <div class="stat-label">High Risk Matches</div>
+                    </div>
                 </div>
-            </form>
-        </div>
+                <div class="stat-card">
+                    <div class="stat-icon orange">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="mediumRiskMatches">0</div>
+                        <div class="stat-label">Medium Risk Matches</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon blue">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="totalMatches">0</div>
+                        <div class="stat-label">Total Matches</div>
+                    </div>
+                </div>
+            </div>
 
-        <div class="card">
-            <div class="card-header">
-                <h2 class="card-title">Suspicious Network Activity</h2>
-                <div class="search-box">
-                    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                    </svg>
-                    <input type="text" id="searchInput" placeholder="Search logs...">
+            <div class="card">
+                <h2 class="card-title">Upload Network Logs</h2>
+                <form id="logUploadForm" class="form-grid">
+                    <div class="form-group">
+                        <label for="logContent">Network Logs (paste or type)</label>
+                        <textarea id="logContent" rows="8" placeholder="Paste your network logs here. Format:&#10;YYYY-MM-DD HH:MM:SS source_ip -> destination_ip_or_domain&#10;&#10;Example:&#10;2026-01-01 10:10:21 192.168.1.5 -> 185.234.219.12&#10;2026-01-01 10:11:11 192.168.1.8 -> malicious-site.com" required></textarea>
+                        <small style="color: var(--text-secondary);">Logs will be automatically correlated with threat indicators</small>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-success">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                            </svg>
+                            Upload & Correlate Logs
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Suspicious Network Activity</h2>
+                    <div class="search-box">
+                        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                        </svg>
+                        <input type="text" id="searchInput" placeholder="Search logs...">
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="logsTable">
+                        <thead>
+                            <tr>
+                                <th>TIMESTAMP</th>
+                                <th>SOURCE IP</th>
+                                <th>DESTINATION</th>
+                                <th>MATCHED INDICATOR</th>
+                                <th>INDICATOR TYPE</th>
+                                <th>RISK LEVEL</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logsBody">
+                            <tr><td colspan="6" class="loading">Loading data...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
-            <div class="table-container">
-                <table id="logsTable">
-                    <thead>
-                        <tr>
-                            <th>TIMESTAMP</th>
-                            <th>SOURCE IP</th>
-                            <th>DESTINATION</th>
-                            <th>MATCHED INDICATOR</th>
-                            <th>INDICATOR TYPE</th>
-                            <th>RISK LEVEL</th>
-                        </tr>
-                    </thead>
-                    <tbody id="logsBody">
-                        <tr>
-                            <td colspan="6" class="loading">Loading data...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
         </div>
     </div>
 
@@ -174,9 +378,11 @@
     </div>
 
     <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script src="{{ url_for('static', filename='ingestion.js') }}"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             loadLogs();
+            initIngestionPanel();
         });
 
         function showAlert(message, type = 'success') {
@@ -190,48 +396,32 @@
                 </svg>
                 <span>${message}</span>
             `;
-
             const container = document.querySelector('.content-area');
             container.insertBefore(alertDiv, container.firstChild);
-
-            setTimeout(() => {
-                alertDiv.remove();
-            }, 5000);
+            setTimeout(() => alertDiv.remove(), 5000);
         }
 
         document.getElementById('logUploadForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             showLoading();
-
             const logContent = document.getElementById('logContent').value.trim();
-
             if (!logContent) {
                 hideLoading();
                 showAlert('Please enter log content', 'danger');
                 return;
             }
-
             try {
                 const response = await fetch('/api/upload-logs', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        log_content: logContent,
-                        filename: `uploaded_${Date.now()}.txt`
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ log_content: logContent, filename: `uploaded_${Date.now()}.txt` })
                 });
-
                 const data = await response.json();
                 hideLoading();
-
                 if (response.ok) {
                     showAlert('Logs uploaded and correlated successfully', 'success');
                     document.getElementById('logContent').value = '';
-                    setTimeout(() => {
-                        loadLogs();
-                    }, 1000);
+                    setTimeout(() => loadLogs(), 1000);
                 } else {
                     showAlert(`Error: ${data.error}`, 'danger');
                 }

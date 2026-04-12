@@ -261,11 +261,32 @@ class ThreatIngestor:
             VALUES (?, ?, ?, ?, ?, ?)
         """, (indicator, indicator_type, technique, tactic, risk_level, 0.85))
 
+    def _indicator_exists(self, indicator):
+        self.cursor.execute("SELECT id FROM indicators WHERE indicator=?", (indicator,))
+        row = self.cursor.fetchone()
+        return row[0] if row else None
+
+    def _get_existing_result(self, indicator, itype):
+        self.cursor.execute(
+            "SELECT indicator, type, risk_score, risk_level FROM risk_scores WHERE indicator=?",
+            (indicator,)
+        )
+        row = self.cursor.fetchone()
+        if row:
+            return {'indicator': row[0], 'type': row[1], 'risk_score': row[2], 'risk_level': row[3]}
+        return {'indicator': indicator, 'type': itype, 'risk_score': 0, 'risk_level': 'Unknown'}
+
     def ingest_ip_addresses(self, ip_list):
         results = []
 
         for ip in ip_list:
             try:
+                existing_id = self._indicator_exists(ip)
+                if existing_id:
+                    print(f"[SKIP] IP {ip} already exists, skipping.")
+                    results.append(self._get_existing_result(ip, 'IP'))
+                    continue
+
                 vt_data = self.api.fetch_virustotal_ip(ip)
                 abuse_data = self.api.fetch_abuseipdb(ip)
                 otx_data = self.api.fetch_otx_ip(ip)
@@ -326,6 +347,12 @@ class ThreatIngestor:
 
         for domain in domain_list:
             try:
+                existing_id = self._indicator_exists(domain)
+                if existing_id:
+                    print(f"[SKIP] Domain {domain} already exists, skipping.")
+                    results.append(self._get_existing_result(domain, 'domain'))
+                    continue
+
                 vt_data = self.api.fetch_virustotal_domain(domain)
                 score = vt_data["score"]
                 risk = self.classify_risk(score)
@@ -382,6 +409,12 @@ class ThreatIngestor:
 
         for file_hash in hash_list:
             try:
+                existing_id = self._indicator_exists(file_hash)
+                if existing_id:
+                    print(f"[SKIP] Hash {file_hash[:16]}... already exists, skipping.")
+                    results.append(self._get_existing_result(file_hash, 'hash'))
+                    continue
+
                 vt_data = self.api.fetch_virustotal_hash(file_hash)
                 score = vt_data["score"]
                 risk = self.classify_risk(score)
@@ -438,6 +471,12 @@ class ThreatIngestor:
 
         for url in url_list:
             try:
+                existing_id = self._indicator_exists(url)
+                if existing_id:
+                    print(f"[SKIP] URL {url[:50]}... already exists, skipping.")
+                    results.append(self._get_existing_result(url, 'url'))
+                    continue
+
                 vt_data = self.api.fetch_virustotal_url(url)
                 score = vt_data["score"]
                 risk = self.classify_risk(score)
