@@ -30,7 +30,9 @@ class LogCorrelator:
         """Correlate network logs with threat indicators"""
         import os
 
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         cursor = conn.cursor()
 
         cursor.execute('DELETE FROM log_correlations')

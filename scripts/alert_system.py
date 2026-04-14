@@ -15,7 +15,9 @@ DB_PATH = 'data/threat_intel.db'
 class AlertSystem:
 
     def __init__(self):
-        self.conn = sqlite3.connect(DB_PATH)
+        self.conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA busy_timeout=30000")
         self.cursor = self.conn.cursor()
         self.init_alert_tables()
 
