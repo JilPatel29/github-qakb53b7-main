@@ -537,10 +537,10 @@ def get_alerts():
         from scripts.alert_system import AlertSystem
 
         alert_system = AlertSystem()
-        active_alerts = alert_system.get_active_alerts()
+        alerts_list = alert_system.get_all_alerts(limit=200)
         alert_system.close()
 
-        return jsonify(active_alerts)
+        return jsonify(alerts_list)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -557,6 +557,69 @@ def get_alert_stats():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/alerts')
+def alerts():
+    return render_template('alerts.html')
+
+@app.route('/api/alert-config', methods=['GET'])
+def get_alert_config():
+    try:
+        from scripts.alert_system import AlertSystem
+
+        alert_system = AlertSystem()
+        config = alert_system.get_email_config()
+        alert_system.close()
+
+        return jsonify({
+            'sender': config['sender'],
+            'recipient': config['recipient'],
+            'enabled': config['enabled']
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/alert-config', methods=['POST'])
+def update_alert_config():
+    try:
+        from scripts.alert_system import AlertSystem
+
+        data = request.get_json()
+        alert_system = AlertSystem()
+        alert_system.update_email_config(
+            data.get('recipient'),
+            data.get('sender'),
+            data.get('password'),
+            data.get('enabled', False)
+        )
+        alert_system.close()
+
+        return jsonify({'success': True, 'message': 'Configuration updated'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/test-gmail', methods=['POST'])
+def test_gmail():
+    try:
+        from scripts.alert_system import AlertSystem
+
+        data = request.get_json()
+        alert_system = AlertSystem()
+
+        temp_config = alert_system.get_email_config()
+        alert_system.update_email_config(
+            temp_config['recipient'],
+            data.get('sender'),
+            data.get('password'),
+            False
+        )
+
+        result = alert_system.test_gmail_connection()
+        alert_system.close()
+
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/api/alerts/acknowledge/<int:alert_id>', methods=['POST'])
 def acknowledge_alert(alert_id):
     try:
@@ -567,6 +630,19 @@ def acknowledge_alert(alert_id):
         alert_system.close()
 
         return jsonify({'success': True, 'message': f'Alert {alert_id} acknowledged'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/alerts/acknowledge-all', methods=['POST'])
+def acknowledge_all_alerts():
+    try:
+        from scripts.alert_system import AlertSystem
+
+        alert_system = AlertSystem()
+        alert_system.acknowledge_all_alerts()
+        alert_system.close()
+
+        return jsonify({'success': True, 'message': 'All alerts acknowledged'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alert System - ThreatIntel</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container-main">
+        <nav class="sidebar">
+            <div class="logo">
+                <span class="icon">🛡️</span>
+                <h1>ThreatIntel</h1>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="/" class="nav-link">📊 Dashboard</a></li>
+                <li><a href="/threat_indicators" class="nav-link">⚠️ Threat Indicators</a></li>
+                <li><a href="/logs" class="nav-link">📋 Log Correlations</a></li>
+                <li><a href="/mitre" class="nav-link">🎯 MITRE ATT&CK</a></li>
+                <li><a href="/alerts" class="nav-link active">🚨 Alerts</a></li>
+                <li><a href="/reports" class="nav-link">📄 Reports</a></li>
+            </ul>
+            <div class="data-mgmt">
+                <h3>Data Management</h3>
+                <button class="btn-secondary" onclick="window.location.href='/add_indicator'">+ Add Indicators</button>
+            </div>
+        </nav>
+
+        <main class="main-content">
+            <header class="top-bar">
+                <h2>Alert System</h2>
+                <div class="header-actions">
+                    <button id="refreshBtn" class="btn-primary" onclick="loadAlerts()">🔄 Refresh</button>
+                    <button id="emailConfigBtn" class="btn-secondary" onclick="toggleEmailConfig()">⚙️ Configure Email</button>
+                </div>
+            </header>
+
+            <div class="content-area">
+                <div id="emailConfigPanel" class="config-panel" style="display: none;">
+                    <h3>Gmail Alert Configuration</h3>
+                    <div class="config-form">
+                        <div class="form-group">
+                            <label for="gmailSender">Gmail Sender Email:</label>
+                            <input type="email" id="gmailSender" placeholder="your_email@gmail.com">
+                        </div>
+                        <div class="form-group">
+                            <label for="gmailPassword">Gmail App Password:</label>
+                            <input type="password" id="gmailPassword" placeholder="16-character app password">
+                            <small>Get app password: Google Account > Security > App passwords</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="alertRecipient">Alert Recipient Email:</label>
+                            <input type="email" id="alertRecipient" placeholder="Email to receive alerts">
+                        </div>
+                        <div class="form-group checkbox">
+                            <input type="checkbox" id="enableEmailAlerts">
+                            <label for="enableEmailAlerts">Enable Email Alerts</label>
+                        </div>
+                        <div class="button-group">
+                            <button class="btn-primary" onclick="testGmailConnection()">🧪 Test Connection</button>
+                            <button class="btn-primary" onclick="saveEmailConfig()">💾 Save Configuration</button>
+                            <button class="btn-secondary" onclick="toggleEmailConfig()">Cancel</button>
+                        </div>
+                        <div id="configMessage" class="message" style="display: none;"></div>
+                    </div>
+                </div>
+
+                <div class="alerts-container">
+                    <div class="stats-row">
+                        <div class="stat-card critical">
+                            <div class="stat-number" id="criticalCount">0</div>
+                            <div class="stat-label">Critical</div>
+                        </div>
+                        <div class="stat-card high">
+                            <div class="stat-number" id="highCount">0</div>
+                            <div class="stat-label">High</div>
+                        </div>
+                        <div class="stat-card medium">
+                            <div class="stat-number" id="unackCount">0</div>
+                            <div class="stat-label">Unacknowledged</div>
+                        </div>
+                        <div class="stat-card low">
+                            <div class="stat-number" id="totalCount">0</div>
+                            <div class="stat-label">Total (24h)</div>
+                        </div>
+                    </div>
+
+                    <div class="alerts-filter">
+                        <button class="filter-btn active" onclick="filterAlerts('all')">All</button>
+                        <button class="filter-btn" onclick="filterAlerts('unack')">Unacknowledged</button>
+                        <button class="filter-btn" onclick="filterAlerts('critical')">Critical</button>
+                        <button class="filter-btn" onclick="filterAlerts('high')">High</button>
+                        <button class="filter-btn" onclick="filterAlerts('acknowledged')">Acknowledged</button>
+                        <button class="btn-secondary" onclick="acknowledgeAllAlerts()">Acknowledge All</button>
+                    </div>
+
+                    <div id="alertsList" class="alerts-list">
+                        <div class="loading">Loading alerts...</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let allAlerts = [];
+        let currentFilter = 'all';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadAlerts();
+            loadEmailConfig();
+            setInterval(loadAlerts, 5000);
+        });
+
+        function loadAlerts() {
+            fetch('/api/alerts')
+                .then(r => r.json())
+                .then(data => {
+                    allAlerts = data;
+                    updateStats();
+                    displayAlerts(filterAlertsList());
+                })
+                .catch(err => console.error('Error loading alerts:', err));
+        }
+
+        function loadEmailConfig() {
+            fetch('/api/alert-config')
+                .then(r => r.json())
+                .then(config => {
+                    document.getElementById('gmailSender').value = config.sender || '';
+                    document.getElementById('alertRecipient').value = config.recipient || '';
+                    document.getElementById('enableEmailAlerts').checked = config.enabled;
+                })
+                .catch(err => console.error('Error loading config:', err));
+        }
+
+        function toggleEmailConfig() {
+            const panel = document.getElementById('emailConfigPanel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function testGmailConnection() {
+            const msgEl = document.getElementById('configMessage');
+            msgEl.style.display = 'none';
+
+            const sender = document.getElementById('gmailSender').value;
+            const password = document.getElementById('gmailPassword').value;
+
+            if (!sender || !password) {
+                showConfigMessage('Please enter Gmail sender and app password', 'error');
+                return;
+            }
+
+            fetch('/api/test-gmail', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({sender, password})
+            })
+                .then(r => r.json())
+                .then(result => {
+                    showConfigMessage(result.message, result.success ? 'success' : 'error');
+                })
+                .catch(err => showConfigMessage('Connection test failed', 'error'));
+        }
+
+        function saveEmailConfig() {
+            const msgEl = document.getElementById('configMessage');
+            msgEl.style.display = 'none';
+
+            const config = {
+                sender: document.getElementById('gmailSender').value,
+                password: document.getElementById('gmailPassword').value,
+                recipient: document.getElementById('alertRecipient').value,
+                enabled: document.getElementById('enableEmailAlerts').checked
+            };
+
+            if (!config.sender || !config.password || !config.recipient) {
+                showConfigMessage('Please fill in all fields', 'error');
+                return;
+            }
+
+            fetch('/api/alert-config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            })
+                .then(r => r.json())
+                .then(result => {
+                    if (result.success) {
+                        showConfigMessage('Configuration saved successfully', 'success');
+                        setTimeout(() => toggleEmailConfig(), 1500);
+                    } else {
+                        showConfigMessage(result.message || 'Failed to save', 'error');
+                    }
+                })
+                .catch(err => showConfigMessage('Save failed', 'error'));
+        }
+
+        function showConfigMessage(msg, type) {
+            const el = document.getElementById('configMessage');
+            el.textContent = msg;
+            el.className = 'message ' + type;
+            el.style.display = 'block';
+        }
+
+        function updateStats() {
+            const stats = {
+                critical: 0,
+                high: 0,
+                unack: 0,
+                total: 0
+            };
+
+            allAlerts.forEach(alert => {
+                stats.total++;
+                if (alert.severity === 'CRITICAL') stats.critical++;
+                if (alert.severity === 'HIGH') stats.high++;
+                if (!alert.acknowledged) stats.unack++;
+            });
+
+            document.getElementById('criticalCount').textContent = stats.critical;
+            document.getElementById('highCount').textContent = stats.high;
+            document.getElementById('unackCount').textContent = stats.unack;
+            document.getElementById('totalCount').textContent = stats.total;
+        }
+
+        function filterAlerts(type) {
+            currentFilter = type;
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            displayAlerts(filterAlertsList());
+        }
+
+        function filterAlertsList() {
+            switch(currentFilter) {
+                case 'unack':
+                    return allAlerts.filter(a => !a.acknowledged);
+                case 'critical':
+                    return allAlerts.filter(a => a.severity === 'CRITICAL');
+                case 'high':
+                    return allAlerts.filter(a => a.severity === 'HIGH');
+                case 'acknowledged':
+                    return allAlerts.filter(a => a.acknowledged);
+                default:
+                    return allAlerts;
+            }
+        }
+
+        function displayAlerts(alerts) {
+            const container = document.getElementById('alertsList');
+
+            if (!alerts || alerts.length === 0) {
+                container.innerHTML = '<div class="no-alerts">No alerts found</div>';
+                return;
+            }
+
+            container.innerHTML = alerts.map(alert => `
+                <div class="alert-card ${alert.severity.toLowerCase()} ${alert.acknowledged ? 'acknowledged' : ''}">
+                    <div class="alert-header">
+                        <span class="alert-badge ${alert.severity.toLowerCase()}">${alert.severity}</span>
+                        <span class="alert-type">${alert.type.replace(/_/g, ' ')}</span>
+                        <span class="alert-time">${new Date(alert.created_at).toLocaleString()}</span>
+                    </div>
+                    <div class="alert-title">${alert.title}</div>
+                    <div class="alert-indicator">
+                        <strong>Indicator:</strong> <code>${alert.indicator}</code>
+                    </div>
+                    <div class="alert-description">${alert.description.replace(/\n/g, '<br>')}</div>
+                    <div class="alert-footer">
+                        <span class="risk-level">Risk: ${alert.risk_level}</span>
+                        <button
+                            class="btn-acknowledge"
+                            onclick="acknowledgeAlert(${alert.id})"
+                            ${alert.acknowledged ? 'disabled' : ''}
+                        >
+                            ${alert.acknowledged ? '✓ Acknowledged' : 'Acknowledge'}
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function acknowledgeAlert(alertId) {
+            fetch(`/api/alerts/acknowledge/${alertId}`, {method: 'POST'})
+                .then(r => r.json())
+                .then(result => {
+                    if (result.success) {
+                        loadAlerts();
+                    }
+                })
+                .catch(err => console.error('Error acknowledging alert:', err));
+        }
+
+        function acknowledgeAllAlerts() {
+            if (!confirm('Acknowledge all unacknowledged alerts?')) return;
+
+            fetch('/api/alerts/acknowledge-all', {method: 'POST'})
+                .then(r => r.json())
+                .then(result => {
+                    if (result.success) {
+                        loadAlerts();
+                    }
+                })
+                .catch(err => console.error('Error acknowledging alerts:', err));
+        }
+    </script>
+
+    <style>
+        .config-panel {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .config-panel h3 {
+            color: #fff;
+            margin-top: 0;
+        }
+
+        .config-form {
+            display: grid;
+            gap: 16px;
+            max-width: 500px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            color: #cbd5e1;
+            font-size: 14px;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus {
+            border-color: #0ea5e9;
+            outline: none;
+        }
+
+        .form-group small {
+            color: #94a3b8;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        .form-group.checkbox {
+            flex-direction: row;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-group.checkbox input {
+            width: 18px;
+            height: 18px;
+            margin: 0;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .message {
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .message.success {
+            background: #10b981;
+            color: white;
+        }
+
+        .message.error {
+            background: #ef4444;
+            color: white;
+        }
+
+        .alerts-filter {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 8px 16px;
+            background: #334155;
+            border: 1px solid #475569;
+            color: #cbd5e1;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .filter-btn:hover {
+            background: #475569;
+            border-color: #64748b;
+        }
+
+        .filter-btn.active {
+            background: #0ea5e9;
+            border-color: #0284c7;
+            color: white;
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-card.critical {
+            border-left: 4px solid #dc2626;
+        }
+
+        .stat-card.high {
+            border-left: 4px solid #f59e0b;
+        }
+
+        .stat-card.medium {
+            border-left: 4px solid #0ea5e9;
+        }
+
+        .stat-card.low {
+            border-left: 4px solid #10b981;
+        }
+
+        .stat-number {
+            font-size: 28px;
+            font-weight: bold;
+            color: #0ea5e9;
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            color: #94a3b8;
+            font-size: 13px;
+        }
+
+        .alerts-list {
+            display: grid;
+            gap: 16px;
+        }
+
+        .alert-card {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 16px;
+            border-left: 4px solid #0ea5e9;
+        }
+
+        .alert-card.critical {
+            border-left-color: #dc2626;
+        }
+
+        .alert-card.high {
+            border-left-color: #f59e0b;
+        }
+
+        .alert-card.medium {
+            border-left-color: #0ea5e9;
+        }
+
+        .alert-card.low {
+            border-left-color: #10b981;
+        }
+
+        .alert-card.acknowledged {
+            opacity: 0.7;
+        }
+
+        .alert-header {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 12px;
+            font-size: 12px;
+        }
+
+        .alert-badge {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .alert-badge.critical {
+            background: #dc2626;
+        }
+
+        .alert-badge.high {
+            background: #f59e0b;
+        }
+
+        .alert-badge.medium {
+            background: #0ea5e9;
+        }
+
+        .alert-badge.low {
+            background: #10b981;
+        }
+
+        .alert-type {
+            color: #cbd5e1;
+            font-weight: 500;
+        }
+
+        .alert-time {
+            color: #94a3b8;
+            margin-left: auto;
+        }
+
+        .alert-title {
+            color: #f1f5f9;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .alert-indicator {
+            color: #cbd5e1;
+            font-size: 13px;
+            margin-bottom: 12px;
+        }
+
+        .alert-indicator code {
+            background: #0f172a;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+            color: #60a5fa;
+        }
+
+        .alert-description {
+            color: #cbd5e1;
+            font-size: 13px;
+            line-height: 1.5;
+            margin-bottom: 12px;
+            padding: 8px;
+            background: #0f172a;
+            border-radius: 4px;
+            border-left: 3px solid #475569;
+        }
+
+        .alert-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .risk-level {
+            color: #94a3b8;
+            font-size: 12px;
+        }
+
+        .btn-acknowledge {
+            padding: 6px 12px;
+            background: #0ea5e9;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-acknowledge:hover:not(:disabled) {
+            background: #0284c7;
+        }
+
+        .btn-acknowledge:disabled {
+            background: #64748b;
+            cursor: not-allowed;
+        }
+
+        .no-alerts {
+            text-align: center;
+            padding: 48px 24px;
+            color: #94a3b8;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 24px;
+            color: #94a3b8;
+        }
+    </style>
+</body>
+</html>
