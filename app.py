@@ -365,6 +365,22 @@ def get_report_summary():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+def _run_alert_check_async():
+    try:
+        from scripts.alert_system import AlertSystem
+        alert_system = AlertSystem()
+        alert_system.check_for_suspicious_activity()
+        alert_system.close()
+    except Exception as e:
+        print(f"[ALERT_CHECK] Error: {e}")
+
+
+def _post_ingest_tasks():
+    LogCorrelator.correlate_logs()
+    t = threading.Thread(target=_run_alert_check_async, daemon=True)
+    t.start()
+
+
 @app.route('/api/ingest/ip', methods=['POST'])
 def ingest_ip():
     try:
@@ -378,7 +394,7 @@ def ingest_ip():
         results = ingestor.ingest_ip_addresses(ip_addresses)
         ingestor.close()
 
-        LogCorrelator.correlate_logs()
+        _post_ingest_tasks()
 
         return jsonify({
             'success': True,
@@ -401,7 +417,7 @@ def ingest_domain():
         results = ingestor.ingest_domains(domains)
         ingestor.close()
 
-        LogCorrelator.correlate_logs()
+        _post_ingest_tasks()
 
         return jsonify({
             'success': True,
@@ -424,7 +440,7 @@ def ingest_hash():
         results = ingestor.ingest_file_hashes(hashes)
         ingestor.close()
 
-        LogCorrelator.correlate_logs()
+        _post_ingest_tasks()
 
         return jsonify({
             'success': True,
@@ -447,7 +463,7 @@ def ingest_url():
         results = ingestor.ingest_urls(urls)
         ingestor.close()
 
-        LogCorrelator.correlate_logs()
+        _post_ingest_tasks()
 
         return jsonify({
             'success': True,

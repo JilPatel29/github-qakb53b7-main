@@ -35,12 +35,16 @@ class LogCorrelator:
         conn.execute("PRAGMA busy_timeout=30000")
         cursor = conn.cursor()
 
-        cursor.execute('DELETE FROM log_correlations')
-
         cursor.execute('SELECT indicator, type FROM enriched_indicators')
         indicators = cursor.fetchall()
 
         indicator_dict = {ind[0]: ind[1] for ind in indicators}
+
+        cursor.execute('''
+            SELECT timestamp, source_ip, matched_indicator
+            FROM log_correlations
+        ''')
+        existing_correlations = {(r[0], r[1], r[2]) for r in cursor.fetchall()}
 
         all_logs = []
 
@@ -58,7 +62,7 @@ class LogCorrelator:
             conn.close()
             return
 
-        matches = []
+        new_matches = []
         for log_line in all_logs:
             parsed = LogCorrelator.parse_log_line(log_line)
             if not parsed:
@@ -67,6 +71,10 @@ class LogCorrelator:
             destination = parsed['destination']
 
             if destination in indicator_dict:
+                dedup_key = (parsed['timestamp'], parsed['source_ip'], destination)
+                if dedup_key in existing_correlations:
+                    continue
+
                 cursor.execute('''
                     SELECT risk_level FROM risk_scores
                     WHERE indicator = ?
@@ -77,7 +85,7 @@ class LogCorrelator:
                 dest_ip = destination if LogCorrelator.is_ip(destination) else None
                 dest_domain = destination if not LogCorrelator.is_ip(destination) else None
 
-                matches.append((
+                new_matches.append((
                     parsed['timestamp'],
                     parsed['source_ip'],
                     dest_ip,
@@ -86,8 +94,9 @@ class LogCorrelator:
                     indicator_dict[destination],
                     risk_level
                 ))
+                existing_correlations.add(dedup_key)
 
-        for match in matches:
+        for match in new_matches:
             cursor.execute('''
                 INSERT INTO log_correlations
                 (timestamp, source_ip, destination_ip, destination_domain, matched_indicator, indicator_type, risk_level)
@@ -97,7 +106,7 @@ class LogCorrelator:
         conn.commit()
         conn.close()
 
-        print(f"Log correlation completed: {len(matches)} matches found")
+        print(f"Log correlation completed: {len(new_matches)} new matches found")
 
 if __name__ == '__main__':
     correlator = LogCorrelator()

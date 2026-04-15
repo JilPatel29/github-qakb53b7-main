@@ -389,6 +389,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             loadLogs();
             initIngestionPanel();
+            setInterval(loadLogs, 30000);
         });
 
         function showAlert(message, type = 'success') {

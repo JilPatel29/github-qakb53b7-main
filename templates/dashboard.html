@@ -189,6 +189,10 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             loadDashboard();
+            setInterval(() => {
+                loadStats();
+                loadHighRiskIndicators();
+            }, 15000);
         });
     </script>
 </body>

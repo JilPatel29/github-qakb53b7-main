@@ -205,14 +205,14 @@ function renderIndicators(indicators) {
     if (!tbody) return;
 
     if (!indicators || indicators.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="loading">No threat indicators available</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="loading">No high-risk indicators found</td></tr>';
         return;
     }
 
     tbody.innerHTML = indicators.map(ind => `
         <tr>
             <td><code>${escapeHtml(ind.indicator)}</code></td>
-            <td><span style="text-transform: uppercase; font-weight: 600; color: #666;">${escapeHtml(ind.type)}</span></td>
+            <td><span style="text-transform: uppercase; font-weight: 600; color: #8b92b0;">${escapeHtml(ind.type)}</span></td>
             <td><strong>${ind.risk_score.toFixed(2)}</strong></td>
             <td><span class="risk-badge risk-${ind.risk_level.toLowerCase()}">${escapeHtml(ind.risk_level)}</span></td>
             <td>${escapeHtml(ind.threat_category)}</td>
@@ -245,12 +245,13 @@ async function loadDashboard() {
 
 async function loadThreats() {
     showLoading();
-    allIndicators = await fetchData('/indicators/all');
+    const data = await fetchData('/indicators/all');
+    allIndicators = data || [];
 
-    if (allIndicators) {
+    if (allIndicators.length > 0) {
         const categories = [...new Set(allIndicators.map(i => i.threat_category))];
         const categoryFilter = document.getElementById('categoryFilter');
-        if (categoryFilter) {
+        if (categoryFilter && categoryFilter.options.length <= 1) {
             categories.forEach(cat => {
                 const option = document.createElement('option');
                 option.value = cat;
@@ -258,10 +259,9 @@ async function loadThreats() {
                 categoryFilter.appendChild(option);
             });
         }
-
-        renderThreats(allIndicators);
     }
 
+    renderThreats(allIndicators);
     setupThreatFilters();
     hideLoading();
 }
@@ -271,14 +271,14 @@ function renderThreats(indicators) {
     if (!tbody) return;
 
     if (!indicators || indicators.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="loading">No threat indicators match your filters</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="loading">No threat indicators found</td></tr>';
         return;
     }
 
     tbody.innerHTML = indicators.map(ind => `
         <tr>
             <td><code>${escapeHtml(ind.indicator)}</code></td>
-            <td><span style="text-transform: uppercase; font-weight: 600; color: #666;">${escapeHtml(ind.type)}</span></td>
+            <td><span style="text-transform: uppercase; font-weight: 600; color: #8b92b0;">${escapeHtml(ind.type)}</span></td>
             <td><strong>${ind.risk_score.toFixed(2)}</strong></td>
             <td><span class="risk-badge risk-${ind.risk_level.toLowerCase()}">${escapeHtml(ind.risk_level)}</span></td>
             <td>${escapeHtml(ind.threat_category)}</td>
@@ -324,23 +324,21 @@ function setupThreatFilters() {
 
 async function loadLogs() {
     showLoading();
-    allLogs = await fetchData('/log-matches');
+    const data = await fetchData('/log-matches');
+    allLogs = data || [];
 
-    if (allLogs) {
-        const highRisk = allLogs.filter(log => log.risk_level === 'High').length;
-        const mediumRisk = allLogs.filter(log => log.risk_level === 'Medium').length;
+    const highRisk = allLogs.filter(log => log.risk_level === 'High').length;
+    const mediumRisk = allLogs.filter(log => log.risk_level === 'Medium').length;
 
-        const highEl = document.getElementById('highRiskMatches');
-        const mediumEl = document.getElementById('mediumRiskMatches');
-        const totalEl = document.getElementById('totalMatches');
+    const highEl = document.getElementById('highRiskMatches');
+    const mediumEl = document.getElementById('mediumRiskMatches');
+    const totalEl = document.getElementById('totalMatches');
 
-        if (highEl) highEl.textContent = highRisk;
-        if (mediumEl) mediumEl.textContent = mediumRisk;
-        if (totalEl) totalEl.textContent = allLogs.length;
+    if (highEl) highEl.textContent = highRisk;
+    if (mediumEl) mediumEl.textContent = mediumRisk;
+    if (totalEl) totalEl.textContent = allLogs.length;
 
-        renderLogs(allLogs);
-    }
-
+    renderLogs(allLogs);
     setupLogSearch();
     hideLoading();
 }
@@ -356,11 +354,11 @@ function renderLogs(logs) {
 
     tbody.innerHTML = logs.map(log => `
         <tr>
-            <td><small style="color: #666;">${escapeHtml(log.timestamp)}</small></td>
+            <td><small style="color: var(--text-secondary);">${escapeHtml(log.timestamp)}</small></td>
             <td><code>${escapeHtml(log.source_ip)}</code></td>
             <td><code>${escapeHtml(log.destination_ip || log.destination_domain || 'N/A')}</code></td>
-            <td><code style="background: #fff3e0; color: #f57c00;">${escapeHtml(log.matched_indicator)}</code></td>
-            <td><span style="text-transform: uppercase; font-weight: 600; color: #666;">${escapeHtml(log.indicator_type)}</span></td>
+            <td><code style="color: var(--warning);">${escapeHtml(log.matched_indicator)}</code></td>
+            <td><span style="text-transform: uppercase; font-weight: 600; color: #8b92b0;">${escapeHtml(log.indicator_type)}</span></td>
             <td><span class="risk-badge risk-${log.risk_level.toLowerCase()}">${escapeHtml(log.risk_level)}</span></td>
         </tr>
     `).join('');
@@ -386,13 +384,11 @@ function setupLogSearch() {
 
 async function loadMitre() {
     showLoading();
-    allMitre = await fetchData('/mitre/techniques');
+    const data = await fetchData('/mitre/techniques');
+    allMitre = data || [];
 
-    if (allMitre) {
-        await loadMitreCharts();
-        renderMitreTable(allMitre);
-    }
-
+    await loadMitreCharts();
+    renderMitreTable(allMitre);
     setupMitreSearch();
     hideLoading();
 }
@@ -546,7 +542,7 @@ function renderMitreTable(data) {
     tbody.innerHTML = data.map(item => `
         <tr>
             <td><strong>${escapeHtml(item.technique)}</strong></td>
-            <td><span style="background: #e1f5fe; color: #0288d1; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">${escapeHtml(item.tactic)}</span></td>
+            <td><span style="background: rgba(0, 212, 255, 0.1); color: var(--accent-primary); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; border: 1px solid rgba(0, 212, 255, 0.2);">${escapeHtml(item.tactic)}</span></td>
             <td><strong>${item.count}</strong></td>
             <td><span class="risk-badge risk-high">${item.count} detections</span></td>
         </tr>
@@ -592,53 +588,57 @@ async function loadReport() {
         if (matchesEl) matchesEl.textContent = stats.log_correlations;
     }
 
-    if (highRiskIndicators) {
-        const tbody = document.getElementById('reportHighRiskTable');
-        if (tbody) {
-            tbody.innerHTML = highRiskIndicators.slice(0, 10).map(ind => `
+    const highRiskBody = document.getElementById('reportHighRiskTable');
+    if (highRiskBody) {
+        if (highRiskIndicators && highRiskIndicators.length > 0) {
+            highRiskBody.innerHTML = highRiskIndicators.slice(0, 10).map(ind => `
                 <tr>
-                    <td><code>${ind.indicator}</code></td>
-                    <td>${ind.type}</td>
+                    <td><code>${escapeHtml(ind.indicator)}</code></td>
+                    <td>${escapeHtml(ind.type)}</td>
                     <td>${ind.risk_score.toFixed(2)}</td>
-                    <td>${ind.threat_category}</td>
-                    <td>${ind.country}</td>
+                    <td>${escapeHtml(ind.threat_category)}</td>
+                    <td>${escapeHtml(ind.country)}</td>
                 </tr>
             `).join('');
+        } else {
+            highRiskBody.innerHTML = '<tr><td colspan="5" class="loading">No high-risk indicators found</td></tr>';
         }
     }
 
-    if (allIndicators) {
-        const categories = {};
-        allIndicators.forEach(ind => {
-            categories[ind.threat_category] = (categories[ind.threat_category] || 0) + 1;
-        });
-
-        const total = allIndicators.length;
-        const tbody = document.getElementById('reportCategoriesTable');
-        if (tbody) {
-            tbody.innerHTML = Object.entries(categories)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 5)
-                .map(([cat, count]) => `
-                    <tr>
-                        <td>${cat}</td>
-                        <td>${count}</td>
-                        <td>${((count / total) * 100).toFixed(1)}%</td>
-                    </tr>
-                `).join('');
-        }
-    }
-
-    if (mitreData) {
-        const tbody = document.getElementById('reportMitreTable');
-        if (tbody) {
-            tbody.innerHTML = mitreData.slice(0, 10).map(item => `
+    const reportAllIndicators = allIndicators || [];
+    const categories = {};
+    reportAllIndicators.forEach(ind => {
+        categories[ind.threat_category] = (categories[ind.threat_category] || 0) + 1;
+    });
+    const total = reportAllIndicators.length;
+    const categoryBody = document.getElementById('reportCategoriesTable');
+    if (categoryBody) {
+        const entries = Object.entries(categories).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        if (entries.length > 0) {
+            categoryBody.innerHTML = entries.map(([cat, count]) => `
                 <tr>
-                    <td>${item.technique}</td>
-                    <td>${item.tactic}</td>
+                    <td>${escapeHtml(cat)}</td>
+                    <td>${count}</td>
+                    <td>${total > 0 ? ((count / total) * 100).toFixed(1) : 0}%</td>
+                </tr>
+            `).join('');
+        } else {
+            categoryBody.innerHTML = '<tr><td colspan="3" class="loading">No data available</td></tr>';
+        }
+    }
+
+    const mitreBody = document.getElementById('reportMitreTable');
+    if (mitreBody) {
+        if (mitreData && mitreData.length > 0) {
+            mitreBody.innerHTML = mitreData.slice(0, 10).map(item => `
+                <tr>
+                    <td>${escapeHtml(item.technique)}</td>
+                    <td>${escapeHtml(item.tactic)}</td>
                     <td>${item.count}</td>
                 </tr>
             `).join('');
+        } else {
+            mitreBody.innerHTML = '<tr><td colspan="3" class="loading">No MITRE techniques detected</td></tr>';
         }
     }
 
