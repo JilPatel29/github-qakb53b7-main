@@ -2,12 +2,19 @@ import requests
 import re
 import sqlite3
 import time
+import os
 from datetime import datetime
 from urllib.parse import urlparse, urljoin
+from dotenv import load_dotenv
+
+load_dotenv()
 
 DB_PATH = 'data/threat_intel.db'
 
-DVWA_CREDENTIALS = {'username': 'admin', 'password': 'password'}
+DVWA_CREDENTIALS = {
+    'username': os.getenv('DVWA_USERNAME', 'admin'),
+    'password': os.getenv('DVWA_PASSWORD', 'password')
+}
 
 DVWA_VULN_PATHS = [
     '/vulnerabilities/sqli/',

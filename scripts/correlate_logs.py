@@ -1,14 +1,17 @@
 import sqlite3
 import re
-from datetime import datetime
+import os
 
 DB_PATH = 'data/threat_intel.db'
 LOG_PATH = 'logs/sample_logs.txt'
 
+MAX_LOG_SIZE_BYTES = 5 * 1024 * 1024
+MAX_LOG_LINES = 10000
+
+
 class LogCorrelator:
     @staticmethod
     def parse_log_line(line):
-        """Parse log line to extract timestamp, source IP, and destination"""
         pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(\d+\.\d+\.\d+\.\d+)\s*->\s*(\d+\.\d+\.\d+\.\d+|[a-zA-Z0-9.-]+)'
         match = re.match(pattern, line.strip())
         if match:
@@ -21,39 +24,36 @@ class LogCorrelator:
 
     @staticmethod
     def is_ip(value):
-        """Check if value is an IP address"""
-        pattern = r'^(\d+\.\d+\.\d+\.\d+)$'
-        return bool(re.match(pattern, value))
+        return bool(re.match(r'^(\d+\.\d+\.\d+\.\d+)$', value))
 
     @staticmethod
     def correlate_logs():
-        """Correlate network logs with threat indicators"""
-        import os
-
         conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=30000")
         cursor = conn.cursor()
 
         cursor.execute('SELECT indicator, type FROM enriched_indicators')
-        indicators = cursor.fetchall()
+        indicator_dict = {row[0]: row[1] for row in cursor.fetchall()}
 
-        indicator_dict = {ind[0]: ind[1] for ind in indicators}
+        cursor.execute('SELECT indicator, risk_level FROM risk_scores')
+        risk_dict = {row[0]: row[1] for row in cursor.fetchall()}
 
-        cursor.execute('''
-            SELECT timestamp, source_ip, matched_indicator
-            FROM log_correlations
-        ''')
+        cursor.execute('SELECT timestamp, source_ip, matched_indicator FROM log_correlations')
         existing_correlations = {(r[0], r[1], r[2]) for r in cursor.fetchall()}
 
         all_logs = []
-
         log_files = [LOG_PATH, 'logs/uploaded_logs.txt']
         for log_file in log_files:
             if os.path.exists(log_file):
                 try:
-                    with open(log_file, 'r') as f:
-                        all_logs.extend(f.readlines())
+                    file_size = os.path.getsize(log_file)
+                    if file_size > MAX_LOG_SIZE_BYTES:
+                        print(f"[CORRELATE] Skipping {log_file}: too large ({file_size} bytes)")
+                        continue
+                    with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                        lines = f.readlines()
+                        all_logs.extend(lines[:MAX_LOG_LINES])
                 except Exception as e:
                     print(f"Error reading {log_file}: {e}")
 
@@ -75,13 +75,7 @@ class LogCorrelator:
                 if dedup_key in existing_correlations:
                     continue
 
-                cursor.execute('''
-                    SELECT risk_level FROM risk_scores
-                    WHERE indicator = ?
-                ''', (destination,))
-                risk_result = cursor.fetchone()
-                risk_level = risk_result[0] if risk_result else 'Medium'
-
+                risk_level = risk_dict.get(destination, 'Medium')
                 dest_ip = destination if LogCorrelator.is_ip(destination) else None
                 dest_domain = destination if not LogCorrelator.is_ip(destination) else None
 
@@ -108,6 +102,6 @@ class LogCorrelator:
 
         print(f"Log correlation completed: {len(new_matches)} new matches found")
 
+
 if __name__ == '__main__':
-    correlator = LogCorrelator()
-    correlator.correlate_logs()
+    LogCorrelator.correlate_logs()
