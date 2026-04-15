@@ -80,10 +80,8 @@ def _continuous_ingestion_worker(interval):
 DB_PATH = 'data/threat_intel.db'
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=30000")
     return conn
 
 @app.route('/')
@@ -563,64 +561,6 @@ def get_alert_stats():
 def alerts():
     return render_template('alerts.html')
 
-@app.route('/api/alert-config', methods=['GET'])
-def get_alert_config():
-    try:
-        from scripts.alert_system import AlertSystem
-
-        alert_system = AlertSystem()
-        config = alert_system.get_email_config()
-        alert_system.close()
-
-        return jsonify({
-            'sender': config['sender'],
-            'recipient': config['recipient'],
-            'enabled': config['enabled']
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/alert-config', methods=['POST'])
-def update_alert_config():
-    try:
-        from scripts.alert_system import AlertSystem
-
-        data = request.get_json()
-        alert_system = AlertSystem()
-        alert_system.update_email_config(
-            data.get('recipient'),
-            data.get('sender'),
-            data.get('password'),
-            data.get('enabled', False)
-        )
-        alert_system.close()
-
-        return jsonify({'success': True, 'message': 'Configuration updated'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/api/test-gmail', methods=['POST'])
-def test_gmail():
-    try:
-        from scripts.alert_system import AlertSystem
-
-        data = request.get_json()
-        alert_system = AlertSystem()
-
-        temp_config = alert_system.get_email_config()
-        alert_system.update_email_config(
-            temp_config['recipient'],
-            data.get('sender'),
-            data.get('password'),
-            False
-        )
-
-        result = alert_system.test_gmail_connection()
-        alert_system.close()
-
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/alerts/acknowledge/<int:alert_id>', methods=['POST'])
 def acknowledge_alert(alert_id):

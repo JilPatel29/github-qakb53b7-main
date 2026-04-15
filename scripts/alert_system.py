@@ -15,9 +15,7 @@ DB_PATH = 'data/threat_intel.db'
 class AlertSystem:
 
     def __init__(self):
-        self.conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA busy_timeout=30000")
+        self.conn = sqlite3.connect(DB_PATH)
         self.cursor = self.conn.cursor()
         self.init_alert_tables()
 
@@ -199,7 +197,7 @@ class AlertSystem:
         if config and config[0]:
             self.send_console_alert(alert)
 
-        if config and config[1]:
+        if alert['severity'] in ['HIGH', 'CRITICAL']:
             self.send_email_alert(alert)
 
     def send_console_alert(self, alert):
@@ -239,31 +237,6 @@ class AlertSystem:
             }
         return {'recipient': '', 'sender': '', 'password': '', 'enabled': False}
 
-    def update_email_config(self, recipient_email, sender_email, app_password, enable_email):
-        self.cursor.execute('''
-            UPDATE alert_config SET
-                alert_email = ?,
-                gmail_sender = ?,
-                gmail_app_password = ?,
-                email_alerts = ?
-            WHERE id = 1
-        ''', (recipient_email, sender_email, app_password, 1 if enable_email else 0))
-        self.conn.commit()
-
-    def test_gmail_connection(self):
-        config = self.get_email_config()
-        if not config['sender'] or not config['password']:
-            return {'success': False, 'message': 'Gmail sender email and app password are required'}
-
-        try:
-            context = ssl.create_default_context()
-            with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as server:
-                server.login(config['sender'], config['password'])
-            return {'success': True, 'message': 'Gmail connection successful'}
-        except smtplib.SMTPAuthenticationError:
-            return {'success': False, 'message': 'Authentication failed. Check your Gmail and App Password.'}
-        except Exception as e:
-            return {'success': False, 'message': f'Connection error: {str(e)}'}
 
     def send_email_alert(self, alert):
         try:
@@ -366,6 +339,7 @@ This is an automated alert. Log in to your dashboard to acknowledge this alert.
             msg.attach(MIMEText(text_body, 'plain'))
             msg.attach(MIMEText(html_body, 'html'))
 
+            password = password.replace(' ', '')
             context = ssl.create_default_context()
             with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as server:
                 server.login(sender, password)
@@ -384,27 +358,31 @@ This is an automated alert. Log in to your dashboard to acknowledge this alert.
             print(f"[ALERT] Failed to send email alert: {e}")
             return False
 
-    def send_test_email(self):
-        config = self.get_email_config()
-        if not config['sender'] or not config['recipient'] or not config['password']:
-            return {'success': False, 'message': 'Email not fully configured'}
 
-        test_alert = {
-            'id': 0,
-            'type': 'TEST',
-            'severity': 'HIGH',
-            'title': 'Test Alert - ThreatIntel Platform',
-            'description': 'This is a test alert to verify your email configuration is working correctly.',
-            'indicator': 'test',
-            'risk_level': 'Test',
-            'timestamp': datetime.now().isoformat()
-        }
+    def get_all_alerts(self, limit=200):
+        self.cursor.execute('''
+            SELECT id, alert_type, severity, title, description,
+                   indicator, risk_level, created_at, acknowledged
+            FROM alerts
+            ORDER BY created_at DESC
+            LIMIT ?
+        ''', (limit,))
 
-        success = self.send_email_alert(test_alert)
-        if success:
-            return {'success': True, 'message': f'Test email sent to {config["recipient"]}'}
-        else:
-            return {'success': False, 'message': 'Failed to send test email. Check credentials and try again.'}
+        alerts = []
+        for row in self.cursor.fetchall():
+            alerts.append({
+                'id': row[0],
+                'type': row[1],
+                'severity': row[2],
+                'title': row[3],
+                'description': row[4],
+                'indicator': row[5],
+                'risk_level': row[6],
+                'created_at': row[7],
+                'acknowledged': bool(row[8])
+            })
+
+        return alerts
 
     def get_active_alerts(self, acknowledged=False):
         self.cursor.execute('''
