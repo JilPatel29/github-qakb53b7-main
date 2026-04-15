@@ -83,7 +83,7 @@ class ThreatIntelAPI:
     def fetch_virustotal_hash(self, file_hash):
         if not self.virustotal_key:
             print(f"[VT_HASH] NO API KEY - Skipping {file_hash[:16]}...")
-            return {"score": 0}
+            return {"score": 0, "not_found": False}
 
         url = f"https://www.virustotal.com/api/v3/files/{file_hash}"
         headers = {"x-apikey": self.virustotal_key}
@@ -98,15 +98,18 @@ class ThreatIntelAPI:
                 stats = data.get("data", {}).get("attributes", {}).get("last_analysis_stats", {})
                 malicious = stats.get("malicious", 0)
                 suspicious = stats.get("suspicious", 0)
-                score = min(100, (malicious + suspicious) * 5)
+                score = min(100, (malicious + suspicious) * 10)
                 print(f"[VT_HASH] SUCCESS - Malicious: {malicious}, Suspicious: {suspicious}, Score: {score}")
-                return {"score": score}
+                return {"score": score, "not_found": False}
+            elif r.status_code == 404:
+                print(f"[VT_HASH] NOT FOUND (404) - Hash unknown to VirusTotal: {file_hash[:16]}...")
+                return {"score": 0, "not_found": True}
             else:
                 print(f"[VT_HASH] ERROR {r.status_code}: {r.text[:200]}")
-                return {"score": 0}
+                return {"score": 0, "not_found": False}
         except Exception as e:
             print(f"[VT_HASH] EXCEPTION: {str(e)}")
-            return {"score": 0}
+            return {"score": 0, "not_found": False}
 
     def fetch_virustotal_url(self, url_to_check):
         if not self.virustotal_key:
@@ -281,12 +284,6 @@ class ThreatIngestor:
 
         for ip in ip_list:
             try:
-                existing_id = self._indicator_exists(ip)
-                if existing_id:
-                    print(f"[SKIP] IP {ip} already exists, skipping.")
-                    results.append(self._get_existing_result(ip, 'IP'))
-                    continue
-
                 vt_data = self.api.fetch_virustotal_ip(ip)
                 abuse_data = self.api.fetch_abuseipdb(ip)
                 otx_data = self.api.fetch_otx_ip(ip)
@@ -302,6 +299,11 @@ class ThreatIngestor:
                 (indicator, type, source, reputation_score)
                 VALUES (?, ?, ?, ?)
                 """, (ip, "IP", "Multi-Source", score))
+
+                self.cursor.execute(
+                    "UPDATE indicators SET reputation_score=? WHERE indicator=?",
+                    (score, ip)
+                )
 
                 self.cursor.execute(
                     "SELECT id FROM indicators WHERE indicator=?",
@@ -416,6 +418,9 @@ class ThreatIngestor:
                     continue
 
                 vt_data = self.api.fetch_virustotal_hash(file_hash)
+                if vt_data.get("not_found"):
+                    print(f"[SKIP] Hash {file_hash[:16]}... not found in VirusTotal, skipping ingestion.")
+                    continue
                 score = vt_data["score"]
                 risk = self.classify_risk(score)
                 threat_category = self.get_threat_category('hash', risk)

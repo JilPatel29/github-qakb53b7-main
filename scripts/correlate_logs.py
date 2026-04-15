@@ -9,7 +9,7 @@ class LogCorrelator:
     @staticmethod
     def parse_log_line(line):
         """Parse log line to extract timestamp, source IP, and destination"""
-        pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(\d+\.\d+\.\d+\.\d+)\s+->\s+(\d+\.\d+\.\d+\.\d+|[a-zA-Z0-9.-]+)'
+        pattern = r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(\d+\.\d+\.\d+\.\d+)\s*->\s*(\d+\.\d+\.\d+\.\d+|[a-zA-Z0-9.-]+)'
         match = re.match(pattern, line.strip())
         if match:
             return {

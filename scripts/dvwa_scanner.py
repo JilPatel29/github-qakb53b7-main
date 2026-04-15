@@ -95,8 +95,12 @@ class DVWAScanner:
     def extract_domains(self, text):
         domain_pattern = r'\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+(?:com|net|org|biz|info|xyz|ru|tk|pw|cc|io|co)\b'
         domains = re.findall(domain_pattern, text)
-        skip = {'localhost', 'jquery.com', 'cdnjs.cloudflare.com', 'cdn.jsdelivr.net',
-                'fonts.googleapis.com', 'fonts.gstatic.com', 'ajax.googleapis.com'}
+        dvwa_host = urlparse(self.dvwa_url).hostname or ''
+        skip = {
+            'localhost', 'jquery.com', 'cdnjs.cloudflare.com', 'cdn.jsdelivr.net',
+            'fonts.googleapis.com', 'fonts.gstatic.com', 'ajax.googleapis.com',
+            dvwa_host,
+        }
         filtered = []
         for d in domains:
             d_lower = d.lower()
@@ -110,9 +114,15 @@ class DVWAScanner:
     def extract_urls(self, text):
         url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
         urls = re.findall(url_pattern, text)
-        skip_prefixes = ('http://localhost', 'https://localhost',
-                         'http://127.', 'https://127.',
-                         'http://192.168.', 'https://192.168.')
+        dvwa_host = urlparse(self.dvwa_url).hostname or 'localhost'
+        dvwa_base = self.dvwa_url
+        skip_prefixes = (
+            'http://localhost', 'https://localhost',
+            'http://127.', 'https://127.',
+            'http://192.168.', 'https://192.168.',
+            f'http://{dvwa_host}', f'https://{dvwa_host}',
+            dvwa_base,
+        )
         return [u for u in urls if not any(u.startswith(p) for p in skip_prefixes)]
 
     def extract_file_hashes(self, text):
