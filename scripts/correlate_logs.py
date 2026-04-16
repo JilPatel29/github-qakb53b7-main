@@ -90,12 +90,12 @@ class LogCorrelator:
                 ))
                 existing_correlations.add(dedup_key)
 
-        for match in new_matches:
-            cursor.execute('''
+        if new_matches:
+            cursor.executemany('''
                 INSERT INTO log_correlations
                 (timestamp, source_ip, destination_ip, destination_domain, matched_indicator, indicator_type, risk_level)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', match)
+            ''', new_matches)
 
         conn.commit()
         conn.close()
