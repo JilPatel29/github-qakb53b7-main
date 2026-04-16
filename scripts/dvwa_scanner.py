@@ -16,6 +16,8 @@ DVWA_CREDENTIALS = {
     'password': os.getenv('DVWA_PASSWORD', 'password')
 }
 
+DVWA_URL = os.getenv('DVWA_URL', 'http://localhost:4280')
+
 DVWA_VULN_PATHS = [
     '/vulnerabilities/sqli/',
     '/vulnerabilities/sqli_blind/',

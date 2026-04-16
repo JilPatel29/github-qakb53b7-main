@@ -401,11 +401,25 @@ def _post_ingest_tasks():
 @app.route('/api/ingest/ip', methods=['POST'])
 def ingest_ip():
     try:
+        from scripts.api_ingest import validate_ip
         data = request.get_json()
         ip_addresses = data.get('ip_addresses', [])
 
         if not ip_addresses:
             return jsonify({'error': 'No IP addresses provided'}), 400
+
+        if not isinstance(ip_addresses, list):
+            return jsonify({'error': 'ip_addresses must be a list'}), 400
+
+        if len(ip_addresses) > 500:
+            return jsonify({'error': 'Too many IPs (max 500 per request)'}), 400
+
+        invalid = [ip for ip in ip_addresses if not validate_ip(str(ip).strip())]
+        if invalid:
+            return jsonify({
+                'error': f'Invalid IP address(es): {", ".join(invalid[:5])}{"..." if len(invalid) > 5 else ""}',
+                'invalid': invalid
+            }), 400
 
         ingestor = ThreatIngestor()
         results = ingestor.ingest_ip_addresses(ip_addresses)
@@ -424,11 +438,25 @@ def ingest_ip():
 @app.route('/api/ingest/domain', methods=['POST'])
 def ingest_domain():
     try:
+        from scripts.api_ingest import validate_domain
         data = request.get_json()
         domains = data.get('domains', [])
 
         if not domains:
             return jsonify({'error': 'No domains provided'}), 400
+
+        if not isinstance(domains, list):
+            return jsonify({'error': 'domains must be a list'}), 400
+
+        if len(domains) > 500:
+            return jsonify({'error': 'Too many domains (max 500 per request)'}), 400
+
+        invalid = [d for d in domains if not validate_domain(str(d).strip())]
+        if invalid:
+            return jsonify({
+                'error': f'Invalid domain(s): {", ".join(invalid[:5])}{"..." if len(invalid) > 5 else ""}',
+                'invalid': invalid
+            }), 400
 
         ingestor = ThreatIngestor()
         results = ingestor.ingest_domains(domains)
@@ -447,11 +475,25 @@ def ingest_domain():
 @app.route('/api/ingest/hash', methods=['POST'])
 def ingest_hash():
     try:
+        from scripts.api_ingest import validate_hash
         data = request.get_json()
         hashes = data.get('hashes', [])
 
         if not hashes:
             return jsonify({'error': 'No file hashes provided'}), 400
+
+        if not isinstance(hashes, list):
+            return jsonify({'error': 'hashes must be a list'}), 400
+
+        if len(hashes) > 500:
+            return jsonify({'error': 'Too many hashes (max 500 per request)'}), 400
+
+        invalid = [h for h in hashes if not validate_hash(str(h).strip())]
+        if invalid:
+            return jsonify({
+                'error': f'Invalid hash(es) - must be MD5 (32), SHA1 (40), or SHA256 (64) hex: {", ".join(str(h)[:16] + "..." for h in invalid[:3])}',
+                'invalid': invalid
+            }), 400
 
         ingestor = ThreatIngestor()
         results = ingestor.ingest_file_hashes(hashes)
@@ -470,11 +512,25 @@ def ingest_hash():
 @app.route('/api/ingest/url', methods=['POST'])
 def ingest_url():
     try:
+        from scripts.api_ingest import validate_url
         data = request.get_json()
         urls = data.get('urls', [])
 
         if not urls:
             return jsonify({'error': 'No URLs provided'}), 400
+
+        if not isinstance(urls, list):
+            return jsonify({'error': 'urls must be a list'}), 400
+
+        if len(urls) > 500:
+            return jsonify({'error': 'Too many URLs (max 500 per request)'}), 400
+
+        invalid = [u for u in urls if not validate_url(str(u).strip())]
+        if invalid:
+            return jsonify({
+                'error': f'Invalid URL(s) - must start with http:// or https://: {", ".join(str(u)[:40] for u in invalid[:3])}',
+                'invalid': invalid
+            }), 400
 
         ingestor = ThreatIngestor()
         results = ingestor.ingest_urls(urls)
