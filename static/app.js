@@ -38,6 +38,49 @@ async function fetchData(endpoint) {
 
 function showError(message) {
     console.error('Error:', message);
+    const container = document.getElementById('errorContainer');
+    if (!container) {
+        const newContainer = document.createElement('div');
+        newContainer.id = 'errorContainer';
+        newContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 10000; max-width: 400px;';
+        document.body.appendChild(newContainer);
+    }
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'alert alert-danger';
+    errorDiv.style.cssText = 'margin-bottom: 10px; animation: slideIn 0.3s ease-out;';
+    errorDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span>${message}</span>
+            <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: inherit; cursor: pointer; font-size: 18px; padding: 0;">&times;</button>
+        </div>
+    `;
+    document.getElementById('errorContainer').appendChild(errorDiv);
+    setTimeout(() => {
+        errorDiv.remove();
+    }, 5000);
+}
+
+function showSuccess(message) {
+    const container = document.getElementById('errorContainer');
+    if (!container) {
+        const newContainer = document.createElement('div');
+        newContainer.id = 'errorContainer';
+        newContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 10000; max-width: 400px;';
+        document.body.appendChild(newContainer);
+    }
+    const successDiv = document.createElement('div');
+    successDiv.className = 'alert alert-success';
+    successDiv.style.cssText = 'margin-bottom: 10px; animation: slideIn 0.3s ease-out;';
+    successDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span>${message}</span>
+            <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: inherit; cursor: pointer; font-size: 18px; padding: 0;">&times;</button>
+        </div>
+    `;
+    document.getElementById('errorContainer').appendChild(successDiv);
+    setTimeout(() => {
+        successDiv.remove();
+    }, 4000);
 }
 
 async function loadStats() {
@@ -394,15 +437,16 @@ async function loadMitre() {
 }
 
 async function loadMitreCharts() {
-    const techniques = {};
+    const techniqueMap = {};
     const tactics = {};
 
     allMitre.forEach(item => {
-        techniques[item.technique] = (techniques[item.technique] || 0) + item.count;
+        const key = `${item.technique} / ${item.tactic}`;
+        techniqueMap[key] = (techniqueMap[key] || 0) + item.count;
         tactics[item.tactic] = (tactics[item.tactic] || 0) + item.count;
     });
 
-    const topTechniques = Object.entries(techniques)
+    const topTechniques = Object.entries(techniqueMap)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 10);
 

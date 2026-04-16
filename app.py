@@ -220,14 +220,23 @@ def get_high_risk_indicators():
 @app.route('/api/indicators/all', methods=['GET'])
 def get_all_indicators():
     try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        per_page = min(per_page, 500)
+
         conn = get_db_connection()
         cursor = conn.cursor()
 
+        cursor.execute("SELECT COUNT(*) FROM risk_scores")
+        total_count = cursor.fetchone()[0]
+
+        offset = (page - 1) * per_page
         cursor.execute("""
             SELECT indicator, type, risk_score, risk_level, threat_category, country
             FROM risk_scores
             ORDER BY risk_score DESC
-        """)
+            LIMIT ? OFFSET ?
+        """, (per_page, offset))
         rows = cursor.fetchall()
 
         conn.close()
@@ -243,7 +252,15 @@ def get_all_indicators():
                 'country': row[5]
             })
 
-        return jsonify(indicators)
+        return jsonify({
+            'indicators': indicators,
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total': total_count,
+                'pages': (total_count + per_page - 1) // per_page
+            }
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -483,25 +500,46 @@ def upload_logs():
         if not log_content:
             return jsonify({'error': 'No log content provided'}), 400
 
+        log_content = log_content.strip()
+        if len(log_content) > 10 * 1024 * 1024:
+            return jsonify({'error': 'Log content exceeds 10MB limit'}), 400
+
+        lines = log_content.split('\n')
+        if len(lines) > 100000:
+            return jsonify({'error': 'Log content exceeds 100,000 lines limit'}), 400
+
+        valid_lines = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            if not any(c.isalnum() or c in '.-_/:' for c in line):
+                return jsonify({'error': 'Invalid log format detected'}), 400
+            valid_lines.append(line)
+
+        if not valid_lines:
+            return jsonify({'error': 'No valid log entries found'}), 400
+
         conn = get_db_connection()
         cursor = conn.cursor()
 
         cursor.execute("""
             INSERT INTO uploaded_logs (filename, content)
             VALUES (?, ?)
-        """, (filename, log_content))
+        """, (filename, '\n'.join(valid_lines)))
 
         conn.commit()
         conn.close()
 
         with open('logs/uploaded_logs.txt', 'a') as f:
-            f.write('\n' + log_content)
+            f.write('\n' + '\n'.join(valid_lines))
 
         LogCorrelator.correlate_logs()
 
         return jsonify({
             'success': True,
-            'message': 'Logs uploaded and correlated successfully'
+            'message': f'Logs uploaded and correlated successfully ({len(valid_lines)} lines)',
+            'lines_processed': len(valid_lines)
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
