@@ -3,17 +3,22 @@ import re
 import sqlite3
 import time
 import os
+import logging
 from datetime import datetime
 from urllib.parse import urlparse, urljoin
 from dotenv import load_dotenv
 
 load_dotenv()
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+
 DB_PATH = 'data/threat_intel.db'
 
 DVWA_CREDENTIALS = {
     'username': os.getenv('DVWA_USERNAME', 'admin'),
-    'password': os.getenv('DVWA_PASSWORD', 'password')
+    'password': os.getenv('DVWA_PASSWORD')
 }
 
 DVWA_VULN_PATHS = [
@@ -153,11 +158,11 @@ class DVWAScanner:
     def login_to_dvwa(self):
         try:
             login_url = f"{self.dvwa_url}/login.php"
-            print(f"[LOGIN] Attempting DVWA login at {login_url}")
+            logger.info(f"[LOGIN] Attempting DVWA login at {login_url}")
 
             r = self.session.get(login_url, timeout=10)
             if r.status_code != 200:
-                print(f"[LOGIN] Login page not accessible: {r.status_code}")
+                logger.error(f"[LOGIN] Login page not accessible: {r.status_code}")
                 return False
 
             token_match = re.search(r"user_token.*?value=['\"]([a-f0-9]+)['\"]", r.text)
@@ -173,16 +178,16 @@ class DVWAScanner:
             r2 = self.session.post(login_url, data=payload, timeout=10, allow_redirects=True)
 
             if 'logout' in r2.text.lower() or 'Welcome' in r2.text or r2.url.endswith('index.php'):
-                print("[LOGIN] Successfully logged in to DVWA")
+                logger.info("[LOGIN] Successfully logged in to DVWA")
                 self.logged_in = True
                 self.set_security_low()
                 return True
             else:
-                print("[LOGIN] Login failed - check credentials or DVWA setup")
+                logger.error("[LOGIN] Login failed - check credentials or DVWA setup")
                 return False
 
         except Exception as e:
-            print(f"[LOGIN] Error: {e}")
+            logger.error(f"[LOGIN] Error: {e}")
             return False
 
     def set_security_low(self):
@@ -192,14 +197,14 @@ class DVWAScanner:
             token_match = re.search(r"user_token.*?value=['\"]([a-f0-9]+)['\"]", r.text)
             token = token_match.group(1) if token_match else ''
             self.session.post(url, data={'security': 'low', 'seclev_submit': 'Submit', 'user_token': token}, timeout=10)
-            print("[SECURITY] Set DVWA security level to Low")
+            logger.info("[SECURITY] Set DVWA security level to Low")
         except Exception as e:
-            print(f"[SECURITY] Could not set security level: {e}")
+            logger.warning(f"[SECURITY] Could not set security level: {e}")
 
     def scan_dvwa_page(self, path):
         try:
             url = f"{self.dvwa_url}{path}"
-            print(f"[SCAN] {url}")
+            logger.info(f"[SCAN] {url}")
 
             r = self.session.get(url, timeout=10)
 
@@ -207,7 +212,7 @@ class DVWAScanner:
                 content = r.text
 
                 if 'login.php' in r.url and path != '/login.php':
-                    print(f"[SCAN] Redirected to login for {path} - session expired")
+                    logger.warning(f"[SCAN] Redirected to login for {path} - session expired")
                     return False
 
                 ips = self.extract_ip_addresses(content)
@@ -308,34 +313,32 @@ class DVWAScanner:
         print(f"[FILTER] {before - after} duplicates removed, {after} new IOCs to ingest")
 
     def ingest_to_database(self):
-        from scripts.api_ingest import ThreatIngestor
-
-        ingestor = ThreatIngestor()
-
-        total = sum(len(v) for v in self.iocs.values())
-
-        if total == 0:
-            print("[INGEST] No new IOCs to ingest")
+        try:
+            from scripts.api_ingest import ThreatIngestor
+            ingestor = ThreatIngestor()
+            total = sum(len(v) for v in self.iocs.values())
+            if total == 0:
+                print("[INGEST] No new IOCs to ingest")
+                ingestor.close()
+                return
+            if self.iocs['ips']:
+                print(f"[INGEST] Ingesting {len(self.iocs['ips'])} IPs...")
+                ingestor.ingest_ip_addresses(self.iocs['ips'])
+            if self.iocs['domains']:
+                print(f"[INGEST] Ingesting {len(self.iocs['domains'])} domains...")
+                ingestor.ingest_domains(self.iocs['domains'])
+            if self.iocs['hashes']:
+                print(f"[INGEST] Ingesting {len(self.iocs['hashes'])} hashes...")
+                ingestor.ingest_file_hashes(self.iocs['hashes'])
+            if self.iocs['urls']:
+                print(f"[INGEST] Ingesting {len(self.iocs['urls'])} URLs...")
+                ingestor.ingest_urls(self.iocs['urls'])
             ingestor.close()
-            return
-
-        if self.iocs['ips']:
-            print(f"[INGEST] Ingesting {len(self.iocs['ips'])} IPs...")
-            ingestor.ingest_ip_addresses(self.iocs['ips'])
-
-        if self.iocs['domains']:
-            print(f"[INGEST] Ingesting {len(self.iocs['domains'])} domains...")
-            ingestor.ingest_domains(self.iocs['domains'])
-
-        if self.iocs['hashes']:
-            print(f"[INGEST] Ingesting {len(self.iocs['hashes'])} hashes...")
-            ingestor.ingest_file_hashes(self.iocs['hashes'])
-
-        if self.iocs['urls']:
-            print(f"[INGEST] Ingesting {len(self.iocs['urls'])} URLs...")
-            ingestor.ingest_urls(self.iocs['urls'])
-
-        ingestor.close()
+            print("[INGEST] Ingestion complete")
+        except ImportError:
+            print("[INGEST] api_ingest.py import failed, skipping")
+        except Exception as e:
+            print(f"[INGEST] Error during ingestion: {e}")
 
     def log_scan_result(self):
         try:
@@ -387,11 +390,18 @@ def run_automated_scan():
 
     scanner.ingest_to_database()
 
-    from scripts.correlate_logs import LogCorrelator
-    LogCorrelator.correlate_logs()
+    try:
+        from scripts.correlate_logs import LogCorrelator
+        LogCorrelator.correlate_logs()
+        print("[CORRELATE] Log correlation complete")
+    except ImportError:
+        print("[CORRELATE] correlate_logs.py import failed, skipping")
+    except Exception as e:
+        print(f"[CORRELATE] Error during correlation: {e}")
 
     new_total = sum(len(v) for v in scanner.iocs.values())
     print(f"[COMPLETE] Scan finished. New IOCs: {{'ips': {len(scanner.iocs['ips'])}, 'domains': {len(scanner.iocs['domains'])}, 'urls': {len(scanner.iocs['urls'])}, 'hashes': {len(scanner.iocs['hashes'])}}}")
+
 
     return scanner.iocs
 
