@@ -7,6 +7,7 @@ let tacticsChart = null;
 let allIndicators = [];
 let allLogs = [];
 let allMitre = [];
+let threatsPagination = { page: 1, per_page: 50, total: 0, pages: 0 };
 
 function showLoading() {
     const overlay = document.getElementById('loadingOverlay');
@@ -38,6 +39,49 @@ async function fetchData(endpoint) {
 
 function showError(message) {
     console.error('Error:', message);
+    const container = document.getElementById('errorContainer');
+    if (!container) {
+        const newContainer = document.createElement('div');
+        newContainer.id = 'errorContainer';
+        newContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 10000; max-width: 400px;';
+        document.body.appendChild(newContainer);
+    }
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'alert alert-danger';
+    errorDiv.style.cssText = 'margin-bottom: 10px; animation: slideIn 0.3s ease-out;';
+    errorDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span>${message}</span>
+            <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: inherit; cursor: pointer; font-size: 18px; padding: 0;">&times;</button>
+        </div>
+    `;
+    document.getElementById('errorContainer').appendChild(errorDiv);
+    setTimeout(() => {
+        errorDiv.remove();
+    }, 5000);
+}
+
+function showSuccess(message) {
+    const container = document.getElementById('errorContainer');
+    if (!container) {
+        const newContainer = document.createElement('div');
+        newContainer.id = 'errorContainer';
+        newContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 10000; max-width: 400px;';
+        document.body.appendChild(newContainer);
+    }
+    const successDiv = document.createElement('div');
+    successDiv.className = 'alert alert-success';
+    successDiv.style.cssText = 'margin-bottom: 10px; animation: slideIn 0.3s ease-out;';
+    successDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span>${message}</span>
+            <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: inherit; cursor: pointer; font-size: 18px; padding: 0;">&times;</button>
+        </div>
+    `;
+    document.getElementById('errorContainer').appendChild(successDiv);
+    setTimeout(() => {
+        successDiv.remove();
+    }, 4000);
 }
 
 async function loadStats() {
@@ -66,17 +110,16 @@ async function loadRiskChart() {
         riskChart.destroy();
     }
 
+    const riskColorMap = { 'High': '#ff4757', 'Medium': '#ffa502', 'Low': '#2ed573' };
+    const riskColors = data.labels.map(l => riskColorMap[l] || '#8b92b0');
+
     riskChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
             labels: data.labels,
             datasets: [{
                 data: data.values,
-                backgroundColor: [
-                    '#ff4757',
-                    '#ffa502',
-                    '#2ed573'
-                ],
+                backgroundColor: riskColors,
                 borderWidth: 2,
                 borderColor: '#1a2142',
                 hoverOffset: 8
@@ -243,14 +286,34 @@ async function loadDashboard() {
     hideLoading();
 }
 
-async function loadThreats() {
+async function loadThreats(page) {
     showLoading();
-    const data = await fetchData('/indicators/all');
-    allIndicators = data || [];
+    page = page || threatsPagination.page;
 
-    if (allIndicators.length > 0) {
+    const searchInput = document.getElementById('searchInput');
+    const riskFilter = document.getElementById('riskFilter');
+    const typeFilter = document.getElementById('typeFilter');
+    const categoryFilter = document.getElementById('categoryFilter');
+
+    const params = new URLSearchParams();
+    params.set('page', page);
+    params.set('per_page', threatsPagination.per_page);
+    if (searchInput && searchInput.value) params.set('search', searchInput.value);
+    if (riskFilter && riskFilter.value) params.set('risk', riskFilter.value);
+    if (typeFilter && typeFilter.value) params.set('type', typeFilter.value);
+    if (categoryFilter && categoryFilter.value) params.set('category', categoryFilter.value);
+
+    const data = await fetchData(`/indicators/all?${params}`);
+
+    if (data && data.indicators !== undefined) {
+        allIndicators = data.indicators;
+        threatsPagination = { ...threatsPagination, ...data.pagination };
+    } else {
+        allIndicators = Array.isArray(data) ? data : [];
+    }
+
+    if (allIndicators.length > 0 && !categoryFilter?.value) {
         const categories = [...new Set(allIndicators.map(i => i.threat_category))];
-        const categoryFilter = document.getElementById('categoryFilter');
         if (categoryFilter && categoryFilter.options.length <= 1) {
             categories.forEach(cat => {
                 const option = document.createElement('option');
@@ -262,6 +325,7 @@ async function loadThreats() {
     }
 
     renderThreats(allIndicators);
+    renderThreatsPagination();
     setupThreatFilters();
     hideLoading();
 }
@@ -287,39 +351,55 @@ function renderThreats(indicators) {
     `).join('');
 }
 
+function renderThreatsPagination() {
+    const container = document.getElementById('threatsPagination');
+    if (!container) return;
+
+    const { page, pages, total, per_page } = threatsPagination;
+    if (!pages || pages <= 1) {
+        container.innerHTML = `<span class="pagination-info">${total} indicators</span>`;
+        return;
+    }
+
+    const start = (page - 1) * per_page + 1;
+    const end = Math.min(page * per_page, total);
+
+    let btns = '';
+    btns += `<button class="page-btn" onclick="loadThreats(1)" ${page === 1 ? 'disabled' : ''}>&laquo;</button>`;
+    btns += `<button class="page-btn" onclick="loadThreats(${page - 1})" ${page === 1 ? 'disabled' : ''}>&lsaquo;</button>`;
+
+    const delta = 2;
+    for (let i = Math.max(1, page - delta); i <= Math.min(pages, page + delta); i++) {
+        btns += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="loadThreats(${i})">${i}</button>`;
+    }
+
+    btns += `<button class="page-btn" onclick="loadThreats(${page + 1})" ${page === pages ? 'disabled' : ''}>&rsaquo;</button>`;
+    btns += `<button class="page-btn" onclick="loadThreats(${pages})" ${page === pages ? 'disabled' : ''}>&raquo;</button>`;
+
+    container.innerHTML = `
+        <span class="pagination-info">${start}–${end} of ${total}</span>
+        <div class="pagination-btns">${btns}</div>
+    `;
+}
+
 function setupThreatFilters() {
     const searchInput = document.getElementById('searchInput');
     const riskFilter = document.getElementById('riskFilter');
     const typeFilter = document.getElementById('typeFilter');
     const categoryFilter = document.getElementById('categoryFilter');
 
-    function applyFilters() {
-        const searchQuery = searchInput ? searchInput.value.toLowerCase() : '';
-        const riskValue = riskFilter ? riskFilter.value : '';
-        const typeValue = typeFilter ? typeFilter.value : '';
-        const categoryValue = categoryFilter ? categoryFilter.value : '';
+    const debounceLoad = (() => {
+        let timer = null;
+        return () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => loadThreats(1), 300);
+        };
+    })();
 
-        let filtered = allIndicators.filter(ind => {
-            const matchesSearch = !searchQuery ||
-                ind.indicator.toLowerCase().includes(searchQuery) ||
-                ind.type.toLowerCase().includes(searchQuery) ||
-                ind.threat_category.toLowerCase().includes(searchQuery) ||
-                ind.country.toLowerCase().includes(searchQuery);
-
-            const matchesRisk = !riskValue || ind.risk_level === riskValue;
-            const matchesType = !typeValue || ind.type === typeValue;
-            const matchesCategory = !categoryValue || ind.threat_category === categoryValue;
-
-            return matchesSearch && matchesRisk && matchesType && matchesCategory;
-        });
-
-        renderThreats(filtered);
-    }
-
-    if (searchInput) searchInput.addEventListener('input', applyFilters);
-    if (riskFilter) riskFilter.addEventListener('change', applyFilters);
-    if (typeFilter) typeFilter.addEventListener('change', applyFilters);
-    if (categoryFilter) categoryFilter.addEventListener('change', applyFilters);
+    if (searchInput) searchInput.addEventListener('input', debounceLoad);
+    if (riskFilter) riskFilter.addEventListener('change', () => loadThreats(1));
+    if (typeFilter) typeFilter.addEventListener('change', () => loadThreats(1));
+    if (categoryFilter) categoryFilter.addEventListener('change', () => loadThreats(1));
 }
 
 async function loadLogs() {
@@ -394,15 +474,16 @@ async function loadMitre() {
 }
 
 async function loadMitreCharts() {
-    const techniques = {};
+    const techniqueMap = {};
     const tactics = {};
 
     allMitre.forEach(item => {
-        techniques[item.technique] = (techniques[item.technique] || 0) + item.count;
+        const key = `${item.technique} / ${item.tactic}`;
+        techniqueMap[key] = (techniqueMap[key] || 0) + item.count;
         tactics[item.tactic] = (tactics[item.tactic] || 0) + item.count;
     });
 
-    const topTechniques = Object.entries(techniques)
+    const topTechniques = Object.entries(techniqueMap)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 10);
 

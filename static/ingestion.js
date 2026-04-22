@@ -186,6 +186,10 @@ function startStatusPolling() {
             if (data.log && data.log.length > 0) {
                 renderActivityLog(data.log);
             }
+            if (data.next_scan_in != null && _ingestionRunning) {
+                _countdownRemaining = data.next_scan_in;
+                updateCountdownUI(_countdownRemaining, _ingestionInterval);
+            }
             if (!data.running && _ingestionRunning) {
                 _ingestionRunning = false;
                 setStatusRunning(false);

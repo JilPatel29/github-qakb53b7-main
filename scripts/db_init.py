@@ -84,6 +84,16 @@ def init_database():
         )
     ''')
 
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_risk_scores_risk_level ON risk_scores(risk_level)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_risk_scores_type ON risk_scores(type)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_risk_scores_indicator ON risk_scores(indicator)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_enriched_indicator ON enriched_indicators(indicator)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_mitre_technique ON mitre_mapping(mitre_technique)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_mitre_tactic ON mitre_mapping(mitre_tactic)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_log_correlations_risk ON log_correlations(risk_level)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_log_correlations_created ON log_correlations(created_at)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_indicators_indicator ON indicators(indicator)')
+
     conn.commit()
     conn.close()
     print("Database initialized successfully")

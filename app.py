@@ -3,6 +3,7 @@ from flask_cors import CORS
 import sqlite3
 import sys
 import os
+import re
 import threading
 import time
 import json
@@ -23,7 +24,8 @@ _ingestion_state = {
     'interval': 30,
     'last_scan': None,
     'scan_count': 0,
-    'log': []
+    'log': [],
+    'next_scan_at': None,
 }
 _ingestion_lock = threading.Lock()
 
@@ -70,6 +72,7 @@ def _continuous_ingestion_worker(interval):
         elapsed = 0
         with _ingestion_lock:
             interval_val = _ingestion_state['interval']
+            _ingestion_state['next_scan_at'] = time.time() + interval_val
         while elapsed < interval_val:
             with _ingestion_lock:
                 if not _ingestion_state['running']:
@@ -220,14 +223,47 @@ def get_high_risk_indicators():
 @app.route('/api/indicators/all', methods=['GET'])
 def get_all_indicators():
     try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        per_page = min(per_page, 500)
+        search_q = request.args.get('search', '').strip()
+        risk_filter = request.args.get('risk', '').strip()
+        type_filter = request.args.get('type', '').strip()
+        category_filter = request.args.get('category', '').strip()
+
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
+        where_clauses = []
+        params = []
+
+        if search_q:
+            where_clauses.append("(indicator LIKE ? OR threat_category LIKE ? OR type LIKE ? OR country LIKE ?)")
+            search_pattern = f"%{search_q}%"
+            params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
+        if risk_filter:
+            where_clauses.append("risk_level = ?")
+            params.append(risk_filter)
+        if type_filter:
+            where_clauses.append("type = ?")
+            params.append(type_filter)
+        if category_filter:
+            where_clauses.append("threat_category = ?")
+            params.append(category_filter)
+
+        where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+
+        cursor.execute(f"SELECT COUNT(*) FROM risk_scores WHERE {where_sql}", params)
+        total_count = cursor.fetchone()[0]
+
+        offset = (page - 1) * per_page
+        cursor.execute(f"""
             SELECT indicator, type, risk_score, risk_level, threat_category, country
             FROM risk_scores
+            WHERE {where_sql}
             ORDER BY risk_score DESC
-        """)
+            LIMIT ? OFFSET ?
+        """, params + [per_page, offset])
         rows = cursor.fetchall()
 
         conn.close()
@@ -243,7 +279,15 @@ def get_all_indicators():
                 'country': row[5]
             })
 
-        return jsonify(indicators)
+        return jsonify({
+            'indicators': indicators,
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total': total_count,
+                'pages': (total_count + per_page - 1) // per_page
+            }
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -384,11 +428,25 @@ def _post_ingest_tasks():
 @app.route('/api/ingest/ip', methods=['POST'])
 def ingest_ip():
     try:
+        from scripts.api_ingest import validate_ip
         data = request.get_json()
         ip_addresses = data.get('ip_addresses', [])
 
         if not ip_addresses:
             return jsonify({'error': 'No IP addresses provided'}), 400
+
+        if not isinstance(ip_addresses, list):
+            return jsonify({'error': 'ip_addresses must be a list'}), 400
+
+        if len(ip_addresses) > 500:
+            return jsonify({'error': 'Too many IPs (max 500 per request)'}), 400
+
+        invalid = [ip for ip in ip_addresses if not validate_ip(str(ip).strip())]
+        if invalid:
+            return jsonify({
+                'error': f'Invalid IP address(es): {", ".join(invalid[:5])}{"..." if len(invalid) > 5 else ""}',
+                'invalid': invalid
+            }), 400
 
         ingestor = ThreatIngestor()
         results = ingestor.ingest_ip_addresses(ip_addresses)
@@ -407,11 +465,25 @@ def ingest_ip():
 @app.route('/api/ingest/domain', methods=['POST'])
 def ingest_domain():
     try:
+        from scripts.api_ingest import validate_domain
         data = request.get_json()
         domains = data.get('domains', [])
 
         if not domains:
             return jsonify({'error': 'No domains provided'}), 400
+
+        if not isinstance(domains, list):
+            return jsonify({'error': 'domains must be a list'}), 400
+
+        if len(domains) > 500:
+            return jsonify({'error': 'Too many domains (max 500 per request)'}), 400
+
+        invalid = [d for d in domains if not validate_domain(str(d).strip())]
+        if invalid:
+            return jsonify({
+                'error': f'Invalid domain(s): {", ".join(invalid[:5])}{"..." if len(invalid) > 5 else ""}',
+                'invalid': invalid
+            }), 400
 
         ingestor = ThreatIngestor()
         results = ingestor.ingest_domains(domains)
@@ -430,11 +502,25 @@ def ingest_domain():
 @app.route('/api/ingest/hash', methods=['POST'])
 def ingest_hash():
     try:
+        from scripts.api_ingest import validate_hash
         data = request.get_json()
         hashes = data.get('hashes', [])
 
         if not hashes:
             return jsonify({'error': 'No file hashes provided'}), 400
+
+        if not isinstance(hashes, list):
+            return jsonify({'error': 'hashes must be a list'}), 400
+
+        if len(hashes) > 500:
+            return jsonify({'error': 'Too many hashes (max 500 per request)'}), 400
+
+        invalid = [h for h in hashes if not validate_hash(str(h).strip())]
+        if invalid:
+            return jsonify({
+                'error': f'Invalid hash(es) - must be MD5 (32), SHA1 (40), or SHA256 (64) hex: {", ".join(str(h)[:16] + "..." for h in invalid[:3])}',
+                'invalid': invalid
+            }), 400
 
         ingestor = ThreatIngestor()
         results = ingestor.ingest_file_hashes(hashes)
@@ -453,11 +539,25 @@ def ingest_hash():
 @app.route('/api/ingest/url', methods=['POST'])
 def ingest_url():
     try:
+        from scripts.api_ingest import validate_url
         data = request.get_json()
         urls = data.get('urls', [])
 
         if not urls:
             return jsonify({'error': 'No URLs provided'}), 400
+
+        if not isinstance(urls, list):
+            return jsonify({'error': 'urls must be a list'}), 400
+
+        if len(urls) > 500:
+            return jsonify({'error': 'Too many URLs (max 500 per request)'}), 400
+
+        invalid = [u for u in urls if not validate_url(str(u).strip())]
+        if invalid:
+            return jsonify({
+                'error': f'Invalid URL(s) - must start with http:// or https://: {", ".join(str(u)[:40] for u in invalid[:3])}',
+                'invalid': invalid
+            }), 400
 
         ingestor = ThreatIngestor()
         results = ingestor.ingest_urls(urls)
@@ -478,10 +578,31 @@ def upload_logs():
     try:
         data = request.get_json()
         log_content = data.get('log_content', '')
-        filename = data.get('filename', 'uploaded_logs.txt')
+        raw_filename = data.get('filename', 'uploaded_logs.txt')
+        filename = re.sub(r'[^\w.\-]', '_', str(raw_filename))[:128] or 'uploaded_logs.txt'
 
         if not log_content:
             return jsonify({'error': 'No log content provided'}), 400
+
+        log_content = log_content.strip()
+        if len(log_content) > 10 * 1024 * 1024:
+            return jsonify({'error': 'Log content exceeds 10MB limit'}), 400
+
+        lines = log_content.split('\n')
+        if len(lines) > 100000:
+            return jsonify({'error': 'Log content exceeds 100,000 lines limit'}), 400
+
+        valid_lines = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            if not any(c.isalnum() or c in '.-_/:' for c in line):
+                return jsonify({'error': 'Invalid log format detected'}), 400
+            valid_lines.append(line)
+
+        if not valid_lines:
+            return jsonify({'error': 'No valid log entries found'}), 400
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -489,19 +610,20 @@ def upload_logs():
         cursor.execute("""
             INSERT INTO uploaded_logs (filename, content)
             VALUES (?, ?)
-        """, (filename, log_content))
+        """, (filename, '\n'.join(valid_lines)))
 
         conn.commit()
         conn.close()
 
         with open('logs/uploaded_logs.txt', 'a') as f:
-            f.write('\n' + log_content)
+            f.write('\n' + '\n'.join(valid_lines))
 
         LogCorrelator.correlate_logs()
 
         return jsonify({
             'success': True,
-            'message': 'Logs uploaded and correlated successfully'
+            'message': f'Logs uploaded and correlated successfully ({len(valid_lines)} lines)',
+            'lines_processed': len(valid_lines)
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -716,12 +838,15 @@ def stop_ingestion():
 @app.route('/api/ingestion/status', methods=['GET'])
 def ingestion_status():
     with _ingestion_lock:
+        next_at = _ingestion_state.get('next_scan_at')
+        next_in = max(0, int(next_at - time.time())) if next_at and _ingestion_state['running'] else None
         return jsonify({
             'running': _ingestion_state['running'],
             'interval': _ingestion_state['interval'],
             'last_scan': _ingestion_state['last_scan'],
             'scan_count': _ingestion_state['scan_count'],
-            'log': _ingestion_state['log'][:20]
+            'log': _ingestion_state['log'][:20],
+            'next_scan_in': next_in,
         })
 
 
@@ -733,12 +858,15 @@ def ingestion_stream():
             with _ingestion_lock:
                 current_count = len(_ingestion_state['log'])
                 running = _ingestion_state['running']
+                next_at = _ingestion_state.get('next_scan_at')
+                next_in = max(0, int(next_at - time.time())) if next_at and running else None
                 payload = {
                     'running': running,
                     'interval': _ingestion_state['interval'],
                     'last_scan': _ingestion_state['last_scan'],
                     'scan_count': _ingestion_state['scan_count'],
-                    'log': _ingestion_state['log'][:20]
+                    'log': _ingestion_state['log'][:20],
+                    'next_scan_in': next_in,
                 }
             if current_count != last_count:
                 last_count = current_count

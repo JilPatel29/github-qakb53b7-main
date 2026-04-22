@@ -141,6 +141,7 @@
                         </tbody>
                     </table>
                 </div>
+                <div id="threatsPagination" class="pagination-bar"></div>
             </div>
         </div>
     </div>
@@ -149,11 +150,55 @@
         <div class="spinner"></div>
     </div>
 
+    <style>
+        .pagination-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 0 0.25rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .pagination-info {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+        .pagination-btns {
+            display: flex;
+            gap: 0.25rem;
+        }
+        .page-btn {
+            padding: 0.375rem 0.625rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-width: 32px;
+        }
+        .page-btn:hover:not(:disabled) {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+        .page-btn.active {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+            color: var(--bg-primary);
+        }
+        .page-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+    </style>
+
     <script src="{{ url_for('static', filename='app.js') }}"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            loadThreats();
-            setInterval(loadThreats, 30000);
+            loadThreats(1);
+            setInterval(() => loadThreats(threatsPagination.page), 30000);
         });
     </script>
 </body>
