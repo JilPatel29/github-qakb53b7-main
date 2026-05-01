@@ -612,87 +612,78 @@ function setupMitreSearch() {
 async function loadReport() {
     showLoading();
 
-    try {
-        const [stats, highRiskIndicators, allIndicatorsData, mitreData] = await Promise.all([
-            fetchData('/stats'),
-            fetchData('/indicators/high-risk'),
-            fetchData('/indicators/all?per_page=100'),
-            fetchData('/mitre/techniques')
-        ]);
+    const stats = await fetchData('/stats');
+    const highRiskIndicators = await fetchData('/indicators/high-risk');
+    const allIndicators = await fetchData('/indicators/all');
+    const mitreData = await fetchData('/mitre/techniques');
 
-        const timestampEl = document.getElementById('reportTimestamp');
-        if (timestampEl) {
-            timestampEl.textContent = new Date().toLocaleString();
+    const timestampEl = document.getElementById('reportTimestamp');
+    if (timestampEl) {
+        timestampEl.textContent = new Date().toLocaleString();
+    }
+
+    if (stats) {
+        const totalEl = document.getElementById('reportTotalIndicators');
+        const highEl = document.getElementById('reportHighRisk');
+        const matchesEl = document.getElementById('reportLogMatches');
+
+        if (totalEl) totalEl.textContent = stats.total_indicators;
+        if (highEl) highEl.textContent = stats.high_risk;
+        if (matchesEl) matchesEl.textContent = stats.log_correlations;
+    }
+
+    const highRiskBody = document.getElementById('reportHighRiskTable');
+    if (highRiskBody) {
+        if (highRiskIndicators && highRiskIndicators.length > 0) {
+            highRiskBody.innerHTML = highRiskIndicators.slice(0, 10).map(ind => `
+                <tr>
+                    <td><code>${escapeHtml(ind.indicator)}</code></td>
+                    <td>${escapeHtml(ind.type)}</td>
+                    <td>${ind.risk_score.toFixed(2)}</td>
+                    <td>${escapeHtml(ind.threat_category)}</td>
+                    <td>${escapeHtml(ind.country)}</td>
+                </tr>
+            `).join('');
+        } else {
+            highRiskBody.innerHTML = '<tr><td colspan="5" class="loading">No high-risk indicators found</td></tr>';
         }
+    }
 
-        if (stats) {
-            const totalEl = document.getElementById('reportTotalIndicators');
-            const highEl = document.getElementById('reportHighRisk');
-            const matchesEl = document.getElementById('reportLogMatches');
-
-            if (totalEl) totalEl.textContent = stats.total_indicators || 0;
-            if (highEl) highEl.textContent = stats.high_risk || 0;
-            if (matchesEl) matchesEl.textContent = stats.log_correlations || 0;
+    const reportAllIndicators = allIndicators || [];
+    const categories = {};
+    reportAllIndicators.forEach(ind => {
+        categories[ind.threat_category] = (categories[ind.threat_category] || 0) + 1;
+    });
+    const total = reportAllIndicators.length;
+    const categoryBody = document.getElementById('reportCategoriesTable');
+    if (categoryBody) {
+        const entries = Object.entries(categories).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        if (entries.length > 0) {
+            categoryBody.innerHTML = entries.map(([cat, count]) => `
+                <tr>
+                    <td>${escapeHtml(cat)}</td>
+                    <td>${count}</td>
+                    <td>${total > 0 ? ((count / total) * 100).toFixed(1) : 0}%</td>
+                </tr>
+            `).join('');
+        } else {
+            categoryBody.innerHTML = '<tr><td colspan="3" class="loading">No data available</td></tr>';
         }
+    }
 
-        const highRiskBody = document.getElementById('reportHighRiskTable');
-        if (highRiskBody) {
-            if (highRiskIndicators && highRiskIndicators.length > 0) {
-                highRiskBody.innerHTML = highRiskIndicators.slice(0, 10).map(ind => `
-                    <tr>
-                        <td><code>${escapeHtml(ind.indicator)}</code></td>
-                        <td>${escapeHtml(ind.type)}</td>
-                        <td>${ind.risk_score != null ? ind.risk_score.toFixed(2) : 'N/A'}</td>
-                        <td>${escapeHtml(ind.threat_category)}</td>
-                        <td>${escapeHtml(ind.country)}</td>
-                    </tr>
-                `).join('');
-            } else {
-                highRiskBody.innerHTML = '<tr><td colspan="5" class="loading">No high-risk indicators found</td></tr>';
-            }
+    const mitreBody = document.getElementById('reportMitreTable');
+    if (mitreBody) {
+        if (mitreData && mitreData.length > 0) {
+            mitreBody.innerHTML = mitreData.slice(0, 10).map(item => `
+                <tr>
+                    <td>${escapeHtml(item.technique)}</td>
+                    <td>${escapeHtml(item.tactic)}</td>
+                    <td>${item.count}</td>
+                </tr>
+            `).join('');
+        } else {
+            mitreBody.innerHTML = '<tr><td colspan="3" class="loading">No MITRE techniques detected</td></tr>';
         }
-
-        const reportAllIndicators = allIndicatorsData?.indicators || [];
-        const categories = {};
-        reportAllIndicators.forEach(ind => {
-            if (ind.threat_category) {
-                categories[ind.threat_category] = (categories[ind.threat_category] || 0) + 1;
-            }
-        });
-        const total = reportAllIndicators.length;
-        const categoryBody = document.getElementById('reportCategoriesTable');
-        if (categoryBody) {
-            const entries = Object.entries(categories).sort((a, b) => b[1] - a[1]).slice(0, 5);
-            if (entries.length > 0) {
-                categoryBody.innerHTML = entries.map(([cat, count]) => `
-                    <tr>
-                        <td>${escapeHtml(cat)}</td>
-                        <td>${count}</td>
-                        <td>${total > 0 ? ((count / total) * 100).toFixed(1) : 0}%</td>
-                    </tr>
-                `).join('');
-            } else {
-                categoryBody.innerHTML = '<tr><td colspan="3" class="loading">No data available</td></tr>';
-            }
-        }
-
-        const mitreBody = document.getElementById('reportMitreTable');
-        if (mitreBody) {
-            if (mitreData && mitreData.length > 0) {
-                mitreBody.innerHTML = mitreData.slice(0, 10).map(item => `
-                    <tr>
-                        <td>${escapeHtml(item.technique)}</td>
-                        <td>${escapeHtml(item.tactic)}</td>
-                        <td>${item.count}</td>
-                    </tr>
-                `).join('');
-            } else {
-                mitreBody.innerHTML = '<tr><td colspan="3" class="loading">No MITRE techniques detected</td></tr>';
-            }
-        }
-    } catch (error) {
-        console.error('Error loading report:', error);
-        showError('Failed to load report data');
     }
 
     hideLoading();
