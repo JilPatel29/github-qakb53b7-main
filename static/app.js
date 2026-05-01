@@ -7,7 +7,6 @@ let tacticsChart = null;
 let allIndicators = [];
 let allLogs = [];
 let allMitre = [];
-let threatsPagination = { page: 1, per_page: 50, total: 0, pages: 0 };
 
 function showLoading() {
     const overlay = document.getElementById('loadingOverlay');
@@ -110,16 +109,17 @@ async function loadRiskChart() {
         riskChart.destroy();
     }
 
-    const riskColorMap = { 'High': '#ff4757', 'Medium': '#ffa502', 'Low': '#2ed573' };
-    const riskColors = data.labels.map(l => riskColorMap[l] || '#8b92b0');
-
     riskChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
             labels: data.labels,
             datasets: [{
                 data: data.values,
-                backgroundColor: riskColors,
+                backgroundColor: [
+                    '#ff4757',
+                    '#ffa502',
+                    '#2ed573'
+                ],
                 borderWidth: 2,
                 borderColor: '#1a2142',
                 hoverOffset: 8
@@ -286,34 +286,14 @@ async function loadDashboard() {
     hideLoading();
 }
 
-async function loadThreats(page) {
+async function loadThreats() {
     showLoading();
-    page = page || threatsPagination.page;
+    const data = await fetchData('/indicators/all');
+    allIndicators = (data && data.indicators) ? data.indicators : [];
 
-    const searchInput = document.getElementById('searchInput');
-    const riskFilter = document.getElementById('riskFilter');
-    const typeFilter = document.getElementById('typeFilter');
-    const categoryFilter = document.getElementById('categoryFilter');
-
-    const params = new URLSearchParams();
-    params.set('page', page);
-    params.set('per_page', threatsPagination.per_page);
-    if (searchInput && searchInput.value) params.set('search', searchInput.value);
-    if (riskFilter && riskFilter.value) params.set('risk', riskFilter.value);
-    if (typeFilter && typeFilter.value) params.set('type', typeFilter.value);
-    if (categoryFilter && categoryFilter.value) params.set('category', categoryFilter.value);
-
-    const data = await fetchData(`/indicators/all?${params}`);
-
-    if (data && data.indicators !== undefined) {
-        allIndicators = data.indicators;
-        threatsPagination = { ...threatsPagination, ...data.pagination };
-    } else {
-        allIndicators = Array.isArray(data) ? data : [];
-    }
-
-    if (allIndicators.length > 0 && !categoryFilter?.value) {
+    if (allIndicators.length > 0) {
         const categories = [...new Set(allIndicators.map(i => i.threat_category))];
+        const categoryFilter = document.getElementById('categoryFilter');
         if (categoryFilter && categoryFilter.options.length <= 1) {
             categories.forEach(cat => {
                 const option = document.createElement('option');
@@ -325,7 +305,6 @@ async function loadThreats(page) {
     }
 
     renderThreats(allIndicators);
-    renderThreatsPagination();
     setupThreatFilters();
     hideLoading();
 }
@@ -351,55 +330,39 @@ function renderThreats(indicators) {
     `).join('');
 }
 
-function renderThreatsPagination() {
-    const container = document.getElementById('threatsPagination');
-    if (!container) return;
-
-    const { page, pages, total, per_page } = threatsPagination;
-    if (!pages || pages <= 1) {
-        container.innerHTML = `<span class="pagination-info">${total} indicators</span>`;
-        return;
-    }
-
-    const start = (page - 1) * per_page + 1;
-    const end = Math.min(page * per_page, total);
-
-    let btns = '';
-    btns += `<button class="page-btn" onclick="loadThreats(1)" ${page === 1 ? 'disabled' : ''}>&laquo;</button>`;
-    btns += `<button class="page-btn" onclick="loadThreats(${page - 1})" ${page === 1 ? 'disabled' : ''}>&lsaquo;</button>`;
-
-    const delta = 2;
-    for (let i = Math.max(1, page - delta); i <= Math.min(pages, page + delta); i++) {
-        btns += `<button class="page-btn ${i === page ? 'active' : ''}" onclick="loadThreats(${i})">${i}</button>`;
-    }
-
-    btns += `<button class="page-btn" onclick="loadThreats(${page + 1})" ${page === pages ? 'disabled' : ''}>&rsaquo;</button>`;
-    btns += `<button class="page-btn" onclick="loadThreats(${pages})" ${page === pages ? 'disabled' : ''}>&raquo;</button>`;
-
-    container.innerHTML = `
-        <span class="pagination-info">${start}–${end} of ${total}</span>
-        <div class="pagination-btns">${btns}</div>
-    `;
-}
-
 function setupThreatFilters() {
     const searchInput = document.getElementById('searchInput');
     const riskFilter = document.getElementById('riskFilter');
     const typeFilter = document.getElementById('typeFilter');
     const categoryFilter = document.getElementById('categoryFilter');
 
-    const debounceLoad = (() => {
-        let timer = null;
-        return () => {
-            clearTimeout(timer);
-            timer = setTimeout(() => loadThreats(1), 300);
-        };
-    })();
+    function applyFilters() {
+        const searchQuery = searchInput ? searchInput.value.toLowerCase() : '';
+        const riskValue = riskFilter ? riskFilter.value : '';
+        const typeValue = typeFilter ? typeFilter.value : '';
+        const categoryValue = categoryFilter ? categoryFilter.value : '';
 
-    if (searchInput) searchInput.addEventListener('input', debounceLoad);
-    if (riskFilter) riskFilter.addEventListener('change', () => loadThreats(1));
-    if (typeFilter) typeFilter.addEventListener('change', () => loadThreats(1));
-    if (categoryFilter) categoryFilter.addEventListener('change', () => loadThreats(1));
+        let filtered = allIndicators.filter(ind => {
+            const matchesSearch = !searchQuery ||
+                ind.indicator.toLowerCase().includes(searchQuery) ||
+                ind.type.toLowerCase().includes(searchQuery) ||
+                ind.threat_category.toLowerCase().includes(searchQuery) ||
+                ind.country.toLowerCase().includes(searchQuery);
+
+            const matchesRisk = !riskValue || ind.risk_level === riskValue;
+            const matchesType = !typeValue || ind.type === typeValue;
+            const matchesCategory = !categoryValue || ind.threat_category === categoryValue;
+
+            return matchesSearch && matchesRisk && matchesType && matchesCategory;
+        });
+
+        renderThreats(filtered);
+    }
+
+    if (searchInput) searchInput.addEventListener('input', applyFilters);
+    if (riskFilter) riskFilter.addEventListener('change', applyFilters);
+    if (typeFilter) typeFilter.addEventListener('change', applyFilters);
+    if (categoryFilter) categoryFilter.addEventListener('change', applyFilters);
 }
 
 async function loadLogs() {
@@ -649,78 +612,87 @@ function setupMitreSearch() {
 async function loadReport() {
     showLoading();
 
-    const stats = await fetchData('/stats');
-    const highRiskIndicators = await fetchData('/indicators/high-risk');
-    const allIndicators = await fetchData('/indicators/all');
-    const mitreData = await fetchData('/mitre/techniques');
+    try {
+        const [stats, highRiskIndicators, allIndicatorsData, mitreData] = await Promise.all([
+            fetchData('/stats'),
+            fetchData('/indicators/high-risk'),
+            fetchData('/indicators/all?per_page=100'),
+            fetchData('/mitre/techniques')
+        ]);
 
-    const timestampEl = document.getElementById('reportTimestamp');
-    if (timestampEl) {
-        timestampEl.textContent = new Date().toLocaleString();
-    }
-
-    if (stats) {
-        const totalEl = document.getElementById('reportTotalIndicators');
-        const highEl = document.getElementById('reportHighRisk');
-        const matchesEl = document.getElementById('reportLogMatches');
-
-        if (totalEl) totalEl.textContent = stats.total_indicators;
-        if (highEl) highEl.textContent = stats.high_risk;
-        if (matchesEl) matchesEl.textContent = stats.log_correlations;
-    }
-
-    const highRiskBody = document.getElementById('reportHighRiskTable');
-    if (highRiskBody) {
-        if (highRiskIndicators && highRiskIndicators.length > 0) {
-            highRiskBody.innerHTML = highRiskIndicators.slice(0, 10).map(ind => `
-                <tr>
-                    <td><code>${escapeHtml(ind.indicator)}</code></td>
-                    <td>${escapeHtml(ind.type)}</td>
-                    <td>${ind.risk_score.toFixed(2)}</td>
-                    <td>${escapeHtml(ind.threat_category)}</td>
-                    <td>${escapeHtml(ind.country)}</td>
-                </tr>
-            `).join('');
-        } else {
-            highRiskBody.innerHTML = '<tr><td colspan="5" class="loading">No high-risk indicators found</td></tr>';
+        const timestampEl = document.getElementById('reportTimestamp');
+        if (timestampEl) {
+            timestampEl.textContent = new Date().toLocaleString();
         }
-    }
 
-    const reportAllIndicators = allIndicators || [];
-    const categories = {};
-    reportAllIndicators.forEach(ind => {
-        categories[ind.threat_category] = (categories[ind.threat_category] || 0) + 1;
-    });
-    const total = reportAllIndicators.length;
-    const categoryBody = document.getElementById('reportCategoriesTable');
-    if (categoryBody) {
-        const entries = Object.entries(categories).sort((a, b) => b[1] - a[1]).slice(0, 5);
-        if (entries.length > 0) {
-            categoryBody.innerHTML = entries.map(([cat, count]) => `
-                <tr>
-                    <td>${escapeHtml(cat)}</td>
-                    <td>${count}</td>
-                    <td>${total > 0 ? ((count / total) * 100).toFixed(1) : 0}%</td>
-                </tr>
-            `).join('');
-        } else {
-            categoryBody.innerHTML = '<tr><td colspan="3" class="loading">No data available</td></tr>';
-        }
-    }
+        if (stats) {
+            const totalEl = document.getElementById('reportTotalIndicators');
+            const highEl = document.getElementById('reportHighRisk');
+            const matchesEl = document.getElementById('reportLogMatches');
 
-    const mitreBody = document.getElementById('reportMitreTable');
-    if (mitreBody) {
-        if (mitreData && mitreData.length > 0) {
-            mitreBody.innerHTML = mitreData.slice(0, 10).map(item => `
-                <tr>
-                    <td>${escapeHtml(item.technique)}</td>
-                    <td>${escapeHtml(item.tactic)}</td>
-                    <td>${item.count}</td>
-                </tr>
-            `).join('');
-        } else {
-            mitreBody.innerHTML = '<tr><td colspan="3" class="loading">No MITRE techniques detected</td></tr>';
+            if (totalEl) totalEl.textContent = stats.total_indicators || 0;
+            if (highEl) highEl.textContent = stats.high_risk || 0;
+            if (matchesEl) matchesEl.textContent = stats.log_correlations || 0;
         }
+
+        const highRiskBody = document.getElementById('reportHighRiskTable');
+        if (highRiskBody) {
+            if (highRiskIndicators && highRiskIndicators.length > 0) {
+                highRiskBody.innerHTML = highRiskIndicators.slice(0, 10).map(ind => `
+                    <tr>
+                        <td><code>${escapeHtml(ind.indicator)}</code></td>
+                        <td>${escapeHtml(ind.type)}</td>
+                        <td>${ind.risk_score != null ? ind.risk_score.toFixed(2) : 'N/A'}</td>
+                        <td>${escapeHtml(ind.threat_category)}</td>
+                        <td>${escapeHtml(ind.country)}</td>
+                    </tr>
+                `).join('');
+            } else {
+                highRiskBody.innerHTML = '<tr><td colspan="5" class="loading">No high-risk indicators found</td></tr>';
+            }
+        }
+
+        const reportAllIndicators = allIndicatorsData?.indicators || [];
+        const categories = {};
+        reportAllIndicators.forEach(ind => {
+            if (ind.threat_category) {
+                categories[ind.threat_category] = (categories[ind.threat_category] || 0) + 1;
+            }
+        });
+        const total = reportAllIndicators.length;
+        const categoryBody = document.getElementById('reportCategoriesTable');
+        if (categoryBody) {
+            const entries = Object.entries(categories).sort((a, b) => b[1] - a[1]).slice(0, 5);
+            if (entries.length > 0) {
+                categoryBody.innerHTML = entries.map(([cat, count]) => `
+                    <tr>
+                        <td>${escapeHtml(cat)}</td>
+                        <td>${count}</td>
+                        <td>${total > 0 ? ((count / total) * 100).toFixed(1) : 0}%</td>
+                    </tr>
+                `).join('');
+            } else {
+                categoryBody.innerHTML = '<tr><td colspan="3" class="loading">No data available</td></tr>';
+            }
+        }
+
+        const mitreBody = document.getElementById('reportMitreTable');
+        if (mitreBody) {
+            if (mitreData && mitreData.length > 0) {
+                mitreBody.innerHTML = mitreData.slice(0, 10).map(item => `
+                    <tr>
+                        <td>${escapeHtml(item.technique)}</td>
+                        <td>${escapeHtml(item.tactic)}</td>
+                        <td>${item.count}</td>
+                    </tr>
+                `).join('');
+            } else {
+                mitreBody.innerHTML = '<tr><td colspan="3" class="loading">No MITRE techniques detected</td></tr>';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading report:', error);
+        showError('Failed to load report data');
     }
 
     hideLoading();

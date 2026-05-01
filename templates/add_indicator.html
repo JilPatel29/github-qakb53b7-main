@@ -197,12 +197,6 @@
                 </form>
             </div>
 
-            <div class="card">
-                <h2 class="card-title">Recent Activity</h2>
-                <div id="recentActivity" class="loading">
-                    Add indicators using the forms above to see activity here
-                </div>
-            </div>
         </div>
     </div>
 
@@ -265,7 +259,6 @@
                 if (response.ok) {
                     showAlert(`Successfully added ${data.ingested} IP address(es)`, 'success');
                     textarea.value = '';
-                    updateRecentActivity(`Added ${data.ingested} IP addresses`);
                 } else {
                     showAlert(`Error: ${data.error}`, 'danger');
                 }
@@ -303,7 +296,6 @@
                 if (response.ok) {
                     showAlert(`Successfully added ${data.ingested} domain(s)`, 'success');
                     textarea.value = '';
-                    updateRecentActivity(`Added ${data.ingested} domains`);
                 } else {
                     showAlert(`Error: ${data.error}`, 'danger');
                 }
@@ -341,7 +333,6 @@
                 if (response.ok) {
                     showAlert(`Successfully added ${data.ingested} file hash(es)`, 'success');
                     textarea.value = '';
-                    updateRecentActivity(`Added ${data.ingested} file hashes`);
                 } else {
                     showAlert(`Error: ${data.error}`, 'danger');
                 }
@@ -379,7 +370,6 @@
                 if (response.ok) {
                     showAlert(`Successfully added ${data.ingested} URL(s)`, 'success');
                     textarea.value = '';
-                    updateRecentActivity(`Added ${data.ingested} URLs`);
                 } else {
                     showAlert(`Error: ${data.error}`, 'danger');
                 }
@@ -443,7 +433,6 @@
                     showAlert(`Successfully added ${type.toUpperCase()}: ${indicator}`, 'success');
                     document.getElementById('singleIndicator').value = '';
                     document.getElementById('indicatorType').value = '';
-                    updateRecentActivity(`Added ${type}: ${indicator}`);
                 } else {
                     showAlert(`Error: ${data.error}`, 'danger');
                 }
@@ -452,22 +441,6 @@
                 showAlert(`Error: ${error.message}`, 'danger');
             }
         });
-
-        let activityLog = [];
-
-        function updateRecentActivity(message) {
-            const timestamp = new Date().toLocaleTimeString();
-            activityLog.unshift(`[${timestamp}] ${message}`);
-
-            if (activityLog.length > 10) {
-                activityLog = activityLog.slice(0, 10);
-            }
-
-            const container = document.getElementById('recentActivity');
-            container.innerHTML = activityLog.map(log =>
-                `<div style="padding: 0.75rem; border-bottom: 1px solid var(--gray-200); font-weight: 500;">${log}</div>`
-            ).join('');
-        }
     </script>
 </body>
 </html>
